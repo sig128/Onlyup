@@ -125,10 +125,14 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 8px">
-          <label for="mcap" style="font-weight: 900; font-size: 15px; letter-spacing: .3px">MARKET CAP WHEN YOU BUY (SOL in the safe)</label>
+          <label for="mcap" style="font-weight: 900; font-size: 15px; letter-spacing: .3px">MARKET CAP WHEN YOU BUY ($)</label>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-            <input id="mcap" type="number" min="0.1" step="1" value="30" style="width: 120px; font-size: 20px; padding: 10px 12px; border: 3px solid var(--ink); border-radius: 12px; background: #fff; color: var(--ink)">
+            <input id="mcap" type="number" min="100" step="500" value="5000" style="width: 130px; font-size: 20px; padding: 10px 12px; border: 3px solid var(--ink); border-radius: 12px; background: #fff; color: var(--ink)">
             <span style="font-weight: 700; font-size: 14px; color: var(--muted)">the earlier you're in, the bigger your share</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 13px; color: var(--muted)">
+            <span>assuming SOL &asymp; $</span>
+            <input id="solprice" type="number" min="1" step="10" value="200" style="width: 68px; font-size: 14px; padding: 5px 8px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink)">
           </div>
         </div>
 
@@ -336,6 +340,12 @@
     return x.toFixed(4) + " SOL";
   }
   function fmtMult(x) { return x >= 100 ? x.toFixed(0) + "×" : x.toFixed(x >= 10 ? 1 : 2) + "×"; }
+  function fmtUsd(x) {
+    if (x >= 1e9) return "$" + (x / 1e9).toFixed(2) + "B";
+    if (x >= 1e6) return "$" + (x / 1e6).toFixed(2) + "M";
+    if (x >= 1e3) return "$" + (x / 1e3).toFixed(1) + "k";
+    return "$" + x.toFixed(0);
+  }
   function fmtTokens(x) {
     if (x >= 1e9) return (x / 1e9).toFixed(2) + "B";
     if (x >= 1e6) return (x / 1e6).toFixed(2) + "M";
@@ -344,7 +354,7 @@
   }
 
   var $ = function (id) { return document.getElementById(id); };
-  var els = { inv: $("inv"), mcap: $("mcap"), vol: $("vol"), lean: $("lean") };
+  var els = { inv: $("inv"), mcap: $("mcap"), solprice: $("solprice"), vol: $("vol"), lean: $("lean") };
 
   function chart(samples) {
     var c = $("chart"), ctx = c.getContext("2d");
@@ -379,7 +389,9 @@
 
   function update() {
     var inv = Math.max(0.01, parseFloat(els.inv.value) || 0.01);
-    var mcap = Math.max(0.1, parseFloat(els.mcap.value) || 0.1);
+    var solPrice = Math.max(1, parseFloat(els.solprice.value) || 1);
+    var mcapUsd = Math.max(100, parseFloat(els.mcap.value) || 100);
+    var mcap = mcapUsd / solPrice;   // market cap converted to SOL for the simulation
     var vol = parseInt(els.vol.value, 10);
     var lean = parseInt(els.lean.value, 10);
 
@@ -395,7 +407,7 @@
     var pe = $("profit");
     pe.textContent = (p >= 0 ? "Profit: +" : "Down: ") + fmtSol(Math.abs(p));
     pe.style.color = p >= 0 ? "var(--green-deep)" : "var(--bad)";
-    $("finalmcap").textContent = fmtSol(r.finalMcap) + " (" + fmtMult(r.finalMcap / mcap) + ")";
+    $("finalmcap").textContent = fmtUsd(r.finalMcap * solPrice) + " (" + fmtMult(r.finalMcap / mcap) + ")";
     $("fees").textContent = fmtSol(r.fees);
     $("exit").textContent = fmtSol(r.exit);
     $("value").setAttribute("aria-label", fmtTokens(r.tokens) + " tokens worth " + fmtSol(r.value));
