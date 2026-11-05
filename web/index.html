@@ -62,13 +62,52 @@
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .candle { animation: none !important; } }
   .candle { transform-origin: bottom; animation: pop .5s cubic-bezier(.2,1.4,.4,1) both; }
   @keyframes pop { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  /* ---- intro ---- */
+  #intro { position: fixed; inset: 0; z-index: 9999; background: #EFFFE3; overflow: hidden;
+    background-image: linear-gradient(#D6F2C6 2px, transparent 2px), linear-gradient(90deg, #D6F2C6 2px, transparent 2px); background-size: 52px 52px; }
+  #intro.out { animation: introOut .6s cubic-bezier(.6,0,.4,1) forwards; }
+  @keyframes introOut { to { opacity: 0; transform: scale(1.18); visibility: hidden; } }
+  .intro-stage { position: absolute; inset: 0; margin: auto; width: min(620px, 94vw); height: min(470px, 76vh); }
+  .intro-candles { position: absolute; left: 0; right: 0; bottom: 6%; display: flex; align-items: flex-end; justify-content: center; gap: 12px; height: 40%; }
+  .intro-candles i { width: 26px; background: var(--green); border: 4px solid var(--ink); border-radius: 9px; transform-origin: bottom; transform: scaleY(0);
+    height: calc(16px + var(--d) * 22px); animation: candlePop .5s cubic-bezier(.2,1.65,.4,1) forwards; animation-delay: calc(var(--d) * .07s); }
+  @keyframes candlePop { to { transform: scaleY(1); } }
+  .intro-arrow { position: absolute; left: 50%; width: 116px; margin-left: -58px; bottom: -40%; opacity: 0;
+    animation: introRocket 1s cubic-bezier(.35,.75,.3,1) .45s forwards; filter: drop-shadow(4px 7px 0 rgba(10,36,16,.22)); }
+  @keyframes introRocket { 0% { bottom: -40%; opacity: 0; transform: scale(.7) rotate(-3deg); } 18% { opacity: 1; } 100% { bottom: 120%; opacity: 1; transform: scale(1.05) rotate(2deg); } }
+  .intro-word { position: absolute; left: 0; right: 0; top: 26%; text-align: center; font-family: 'Lilita One','Nunito',sans-serif;
+    font-size: clamp(46px, 13vw, 104px); line-height: 1; color: var(--ink); opacity: 0; transform: scale(2.5); text-shadow: 6px 6px 0 var(--green);
+    animation: introSlam .5s cubic-bezier(.2,1.7,.3,1) 1.3s forwards; }
+  @keyframes introSlam { 0% { opacity: 0; transform: scale(2.5) rotate(-5deg); } 60% { opacity: 1; transform: scale(.9) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(-1.5deg); } }
+  .intro-tag { position: absolute; left: 0; right: 0; top: 47%; text-align: center; opacity: 0; animation: introPop .4s cubic-bezier(.2,1.6,.4,1) 1.75s forwards; }
+  .intro-tag span { font-family: 'Lilita One', sans-serif; font-size: clamp(16px, 3.2vw, 24px); background: var(--yellow); color: var(--ink);
+    border: 3px solid var(--ink); border-radius: 12px; padding: 7px 18px; box-shadow: 4px 4px 0 var(--ink); display: inline-block; transform: rotate(-1.5deg); }
+  @keyframes introPop { from { opacity: 0; transform: translateY(14px) scale(.8); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .intro-stage.shake { animation: introShake .4s 1.3s; }
+  @keyframes introShake { 0%,100% { transform: translate(0,0); } 15% { transform: translate(-7px,5px); } 30% { transform: translate(7px,-5px); } 45% { transform: translate(-5px,-3px); } 60% { transform: translate(5px,3px); } 75% { transform: translate(-3px,2px); } }
+  .intro-confetti { position: absolute; top: 40%; left: 50%; width: 0; height: 0; z-index: 6; }
+  .confetti-bit { position: absolute; width: 13px; height: 13px; border-radius: 3px; border: 2px solid var(--ink); left: -6px; top: -6px; }
+  .intro-skip { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 14px; color: var(--muted); opacity: .65; }
+  @media (prefers-reduced-motion: reduce) { #intro { display: none; } }
 </style>
 </head>
 <body>
 
+<div id="intro" aria-hidden="true">
+  <div class="intro-stage">
+    <div class="intro-candles"><i style="--d:0"></i><i style="--d:1"></i><i style="--d:2"></i><i style="--d:3"></i><i style="--d:4"></i><i style="--d:5"></i><i style="--d:6"></i><i style="--d:7"></i></div>
+    <svg class="intro-arrow" viewBox="0 0 44 48" aria-hidden="true"><polygon points="22,2 42,24 30,24 30,46 14,46 14,24 2,24" fill="#3BE06E" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"></polygon></svg>
+    <div class="intro-word">ONLY UP</div>
+    <div class="intro-tag"><span>the chart that never goes down</span></div>
+  </div>
+  <div class="intro-confetti" id="confetti"></div>
+  <div class="intro-skip">tap anywhere to skip</div>
+</div>
+
 <header class="wrap" style="padding-top: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
   <a href="#top" style="display: flex; align-items: center; gap: 12px; text-decoration: none">
-    <svg width="44" height="48" viewBox="0 0 44 48" aria-hidden="true"><polygon points="22,3 41,23 30,23 30,45 14,45 14,23 3,23" fill="#FFD23F" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"></polygon><circle cx="18" cy="29" r="2.6" fill="#0A2410"></circle><circle cx="26" cy="29" r="2.6" fill="#0A2410"></circle><path d="M17 36 Q22 40 27 36" fill="none" stroke="#0A2410" stroke-width="2.6" stroke-linecap="round"></path></svg>
+    <svg width="44" height="48" viewBox="0 0 44 48" aria-hidden="true"><polygon points="22,3 41,23 30,23 30,45 14,45 14,23 3,23" fill="#3BE06E" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"></polygon></svg>
     <span class="display" style="font-size: 32px; letter-spacing: 0.5px">ONLY UP</span>
   </a>
   <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
@@ -108,10 +147,7 @@
       <g class="candle" style="animation-delay:.47s"><line x1="391" y1="126" x2="391" y2="180" stroke="#0A2410" stroke-width="4" stroke-linecap="round"></line><rect x="376" y="136" width="30" height="36" rx="7" fill="#3BE06E" stroke="#0A2410" stroke-width="4"></rect></g>
       <g class="candle" style="animation-delay:.54s"><line x1="447" y1="88" x2="447" y2="152" stroke="#0A2410" stroke-width="4" stroke-linecap="round"></line><rect x="432" y="98" width="30" height="46" rx="7" fill="#3BE06E" stroke="#0A2410" stroke-width="4"></rect></g>
       <g class="candle" style="animation-delay:.61s"><line x1="503" y1="50" x2="503" y2="124" stroke="#0A2410" stroke-width="4" stroke-linecap="round"></line><rect x="488" y="60" width="30" height="56" rx="7" fill="#3BE06E" stroke="#0A2410" stroke-width="4"></rect></g>
-      <polygon points="104,26 160,84 128,84 128,160 80,160 80,84 48,84" fill="#FFD23F" stroke="#0A2410" stroke-width="6" stroke-linejoin="round"></polygon>
-      <circle cx="94" cy="106" r="7" fill="#0A2410"></circle><circle cx="114" cy="106" r="7" fill="#0A2410"></circle>
-      <circle cx="96" cy="104" r="2.2" fill="#FFFFFF"></circle><circle cx="116" cy="104" r="2.2" fill="#FFFFFF"></circle>
-      <path d="M90 126 Q104 140 118 126" fill="none" stroke="#0A2410" stroke-width="5" stroke-linecap="round"></path>
+      <polygon points="104,26 160,84 128,84 128,160 80,160 80,84 48,84" fill="#3BE06E" stroke="#0A2410" stroke-width="6" stroke-linejoin="round"></polygon>
       <path d="M36 44 L22 30 M30 62 L12 58 M172 44 L186 30 M178 64 L196 62" stroke="#0A2410" stroke-width="4" stroke-linecap="round"></path>
       <rect x="196" y="22" width="176" height="56" rx="22" fill="#FFFFFF" stroke="#0A2410" stroke-width="4"></rect>
       <path d="M204 62 L182 82 L216 70" fill="#FFFFFF" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"></path>
@@ -263,6 +299,41 @@
   <span style="max-width: 640px">Not financial advice. No promised returns. The price is in SOL and its dollar value moves with SOL.</span>
   <span style="display: flex; gap: 20px"><a href="docs.html">Docs</a><a href="docs.html#sim">Simulator</a><a href="#faq">FAQ</a><a href="#launch">Launch</a></span>
 </footer>
+
+<script>
+(function () {
+  "use strict";
+  var intro = document.getElementById('intro');
+  if (!intro) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var seen = false; try { seen = sessionStorage.getItem('ou_intro') === '1'; } catch (e) {}
+  if (reduce || seen) { if (intro.parentNode) intro.parentNode.removeChild(intro); return; }
+  var stage = intro.querySelector('.intro-stage');
+  var tShake = setTimeout(function () { if (stage) stage.classList.add('shake'); burst(); }, 1300);
+  function burst() {
+    var c = document.getElementById('confetti'); if (!c || !c.animate) return;
+    var cols = ['#3BE06E', '#FFD23F', '#0A2410', '#2BC55C', '#FFFFFF'];
+    for (var i = 0; i < 48; i++) {
+      var d = document.createElement('span'); d.className = 'confetti-bit'; d.style.background = cols[i % cols.length];
+      c.appendChild(d);
+      var ang = Math.random() * 6.283, dist = 130 + Math.random() * 280;
+      var dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist - 50;
+      d.animate([
+        { transform: 'translate(0,0) rotate(0) scale(1)', opacity: 1 },
+        { transform: 'translate(' + dx.toFixed(0) + 'px,' + dy.toFixed(0) + 'px) rotate(' + (Math.random() * 720 - 360).toFixed(0) + 'deg) scale(.5)', opacity: 0 }
+      ], { duration: 950 + Math.random() * 550, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    }
+  }
+  var done = false, tEnd = setTimeout(finish, 2750);
+  function finish() {
+    if (done) return; done = true; clearTimeout(tShake); clearTimeout(tEnd);
+    try { sessionStorage.setItem('ou_intro', '1'); } catch (e) {}
+    intro.classList.add('out');
+    setTimeout(function () { if (intro.parentNode) intro.parentNode.removeChild(intro); }, 650);
+  }
+  ['click', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) { intro.addEventListener(ev, finish, { passive: true }); });
+})();
+</script>
 
 </body>
 </html>

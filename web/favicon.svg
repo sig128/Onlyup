@@ -2,8 +2,6 @@
   <rect width="64" height="64" rx="13" fill="#EFFFE3"/>
   <rect x="2.5" y="2.5" width="59" height="59" rx="11" fill="none" stroke="#0A2410" stroke-width="3"/>
   <g transform="translate(10,8)">
-    <polygon points="22,3 41,23 30,23 30,45 14,45 14,23 3,23" fill="#FFD23F" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"/>
-    <circle cx="18" cy="29" r="2.8" fill="#0A2410"/><circle cx="26" cy="29" r="2.8" fill="#0A2410"/>
-    <path d="M17 36 Q22 40.5 27 36" fill="none" stroke="#0A2410" stroke-width="2.8" stroke-linecap="round"/>
+    <polygon points="22,3 41,23 30,23 30,45 14,45 14,23 3,23" fill="#3BE06E" stroke="#0A2410" stroke-width="4" stroke-linejoin="round"/>
   </g>
 </svg>
