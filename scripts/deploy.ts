@@ -43,7 +43,7 @@ interface LaunchConfig {
   metadataUri: string;
   /** false = name, symbol and image can never be changed (a trust signal). */
   metadataMutable: boolean;
-  /** Wallet for the team's fee share. Defaults to the deployer. */
+  /** Wallet for the creator's fee share. Defaults to the deployer. */
   treasury?: string;
   /** SOL locked in the safe forever at launch. */
   seedSol: number;
@@ -52,11 +52,6 @@ interface LaunchConfig {
   buyFeeBps: number;
   sellFeeBps: number;
   teamFeeBps: number;
-  maxHypeBps: number;
-  hypeFullBps: number;
-  hypeHalfLifeSecs: number;
-  /** Seconds for fees to drip into the price. Defaults to 60 (one minute). */
-  dripSecs?: number;
   /** Optional first buy by the deployer, in SOL. These tokens are not locked. */
   launchBuySol: number;
 }
@@ -127,10 +122,6 @@ async function main() {
     buyFeeBps: cfg.buyFeeBps,
     sellFeeBps: cfg.sellFeeBps,
     teamFeeBps: cfg.teamFeeBps,
-    maxHypeBps: cfg.maxHypeBps,
-    hypeFullBps: cfg.hypeFullBps,
-    hypeHalfLifeSecs: cfg.hypeHalfLifeSecs,
-    dripSecs: cfg.dripSecs ?? 60,
   };
   const tx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
@@ -139,16 +130,12 @@ async function main() {
   if (cfg.launchBuySol > 0) {
     const solIn = BigInt(Math.round(cfg.launchBuySol * LAMPORTS_PER_SOL));
     const ata = getAssociatedTokenAddressSync(mint, deployer.publicKey);
-    // Same moment as the launch: no heat yet, nothing dripping, so the quote is exact.
-    const q = lib.quoteBuyFull(
-      solIn, seedLamports, seedTokens, 0n,
-      cfg.buyFeeBps, cfg.teamFeeBps, cfg.maxHypeBps, cfg.hypeFullBps,
-    );
-    if (!q || q.quote.tokensOut === 0n) throw new Error("launch buy cannot be quoted");
-    console.log(`Launch buy: ${Number(q.quote.tokensOut) / 10 ** lib.DECIMALS} tokens, hype fee ${q.hype / 100}%`);
+    const q = lib.quoteBuy(solIn, seedLamports, seedTokens, cfg.buyFeeBps, cfg.teamFeeBps);
+    if (!q || q.tokensOut === 0n) throw new Error("launch buy cannot be quoted");
+    console.log(`Launch buy: ${Number(q.tokensOut) / 10 ** lib.DECIMALS} tokens`);
     tx.add(
       createAssociatedTokenAccountIdempotentInstruction(deployer.publicKey, ata, deployer.publicKey, mint),
-      lib.buyIx(deployer.publicKey, mint, ata, solIn, q.quote.tokensOut),
+      lib.buyIx(deployer.publicKey, mint, ata, solIn, (q.tokensOut * 99n) / 100n),
     );
   }
   const sig = await sendAndConfirmTransaction(connection, tx, [deployer]);
@@ -164,9 +151,8 @@ async function main() {
     vault: lib.vaultPda(market).toBase58(),
     lockedTokens: lib.lockedPda(market).toBase58(),
     treasury: treasury.toBase58(),
-    safeSol: Number(m.reserve + m.pending) / LAMPORTS_PER_SOL,
+    safeSol: Number(m.reserve) / LAMPORTS_PER_SOL,
     priceSolPerToken: lib.priceSolPerToken(m.reserve, supply),
-    dripSecs: m.dripSecs,
   };
   writeFileSync("launch-output.json", JSON.stringify(out, null, 2));
   console.log(out);

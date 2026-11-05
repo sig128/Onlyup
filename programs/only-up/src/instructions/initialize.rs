@@ -16,13 +16,12 @@ pub struct InitParams {
     /// Token base units minted into the locked account forever.
     /// Starting price = seed_lamports / seed_tokens.
     pub seed_tokens: u64,
+    /// Holder fee on buys, in basis points (e.g. 250 = 2.5%).
     pub buy_fee_bps: u16,
+    /// Holder fee on sells, in basis points.
     pub sell_fee_bps: u16,
+    /// Creator share of every buy and sell, in basis points (e.g. 50 = 0.5%).
     pub team_fee_bps: u16,
-    pub max_hype_bps: u16,
-    pub hype_full_bps: u16,
-    pub hype_half_life_secs: u32,
-    pub drip_secs: u32,
 }
 
 #[derive(Accounts)]
@@ -59,7 +58,7 @@ pub struct Initialize<'info> {
     )]
     pub locked_tokens: Account<'info, TokenAccount>,
 
-    /// An ordinary wallet that may receive the team's fee share.
+    /// An ordinary wallet that may receive the creator's fee share.
     pub treasury: SystemAccount<'info>,
 
     pub token_program: Program<'info, Token>,
@@ -73,16 +72,10 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
             && p.team_fee_bps <= MAX_TEAM_FEE_BPS,
         OnlyUpError::BadFeeSettings
     );
-    require!(
-        p.max_hype_bps <= MAX_HYPE_BPS
-            && (MIN_HYPE_FULL_BPS..=MAX_HYPE_FULL_BPS).contains(&p.hype_full_bps)
-            && (MIN_HYPE_HALF_LIFE_SECS..=MAX_HYPE_HALF_LIFE_SECS).contains(&p.hype_half_life_secs),
-        OnlyUpError::BadHypeSettings
-    );
-    require!(
-        (MIN_DRIP_SECS..=MAX_DRIP_SECS).contains(&p.drip_secs),
-        OnlyUpError::BadDripSettings
-    );
+    // A buy lifts the price by at most the buy fee, so an exit fee at least as
+    // large means a round trip around another trader can never turn a profit.
+    // This is what keeps buys from being sandwiched, with fees landing instantly.
+    require!(p.sell_fee_bps >= p.buy_fee_bps, OnlyUpError::LopsidedFees);
     require!(
         p.seed_lamports >= MIN_SEED_LAMPORTS && p.seed_tokens >= MIN_SEED_TOKENS,
         OnlyUpError::SeedTooSmall
@@ -156,7 +149,7 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         p.seed_tokens,
     )?;
 
-    check_vault_covers(ctx.accounts.vault.lamports(), p.seed_lamports, 0, 0)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), p.seed_lamports, 0)?;
 
     let now = Clock::get()?.unix_timestamp;
     let treasury = ctx.accounts.treasury.key();
@@ -169,18 +162,10 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         admin,
         treasury,
         reserve: p.seed_lamports,
-        pending: 0,
         team_fees_owed: 0,
-        heat: 0,
-        heat_updated_at: now,
-        last_drip_at: now,
         buy_fee_bps: p.buy_fee_bps,
         sell_fee_bps: p.sell_fee_bps,
         team_fee_bps: p.team_fee_bps,
-        max_hype_bps: p.max_hype_bps,
-        hype_full_bps: p.hype_full_bps,
-        hype_half_life_secs: p.hype_half_life_secs,
-        drip_secs: p.drip_secs,
         buys_paused: false,
         created_at: now,
         trade_count: 0,
@@ -197,10 +182,6 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         buy_fee_bps: p.buy_fee_bps,
         sell_fee_bps: p.sell_fee_bps,
         team_fee_bps: p.team_fee_bps,
-        max_hype_bps: p.max_hype_bps,
-        hype_full_bps: p.hype_full_bps,
-        hype_half_life_secs: p.hype_half_life_secs,
-        drip_secs: p.drip_secs,
         timestamp: now,
     });
     Ok(())

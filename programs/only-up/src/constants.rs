@@ -13,25 +13,13 @@ pub const DECIMALS: u8 = 6;
 
 // Hard limits, fixed in code, so no deployment can turn the token into a trap.
 
-/// Fees kept for holders. Every trade pays at least 0.1%, so every trade
-/// lifts the price. Buys can cost up to 10%; sells at most 5%, so getting out
-/// always stays cheap.
+/// Fee kept for holders, on each side. Every trade pays at least 0.1%, so
+/// every trade lifts the price, and at most 5%, so getting out stays cheap.
 pub const MIN_FEE_BPS: u16 = 10;
-pub const MAX_BUY_FEE_BPS: u16 = 1_000;
+pub const MAX_BUY_FEE_BPS: u16 = 500;
 pub const MAX_SELL_FEE_BPS: u16 = 500;
-/// Team share of each trade: at most 2%.
+/// Creator share of each trade: at most 2%.
 pub const MAX_TEAM_FEE_BPS: u16 = 200;
-/// Hype fee ceiling (buys only): at most 20%.
-pub const MAX_HYPE_BPS: u16 = 2_000;
-/// Heat needed for the full hype fee, as a share of the reserve: 1% to 100%.
-pub const MIN_HYPE_FULL_BPS: u16 = 100;
-pub const MAX_HYPE_FULL_BPS: u16 = 10_000;
-/// Hype half-life: one minute to seven days.
-pub const MIN_HYPE_HALF_LIFE_SECS: u32 = 60;
-pub const MAX_HYPE_HALF_LIFE_SECS: u32 = 7 * 24 * 60 * 60;
-/// How long fees take to drip into the price: one minute to seven days.
-pub const MIN_DRIP_SECS: u32 = 60;
-pub const MAX_DRIP_SECS: u32 = 7 * 24 * 60 * 60;
 
 /// Minimum seed: 0.01 SOL and 1,000,000 base units of the token.
 pub const MIN_SEED_LAMPORTS: u64 = 10_000_000;

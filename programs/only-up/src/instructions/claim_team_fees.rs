@@ -5,12 +5,11 @@ use crate::constants::*;
 use crate::errors::OnlyUpError;
 use crate::events::TeamFeesClaimed;
 use crate::instructions::check_vault_covers;
-use crate::state::Market;
 
 #[derive(Accounts)]
 pub struct ClaimTeamFees<'info> {
     #[account(mut, seeds = [MARKET_SEED, market.mint.as_ref()], bump = market.bump)]
-    pub market: Account<'info, Market>,
+    pub market: Account<'info, crate::state::Market>,
 
     #[account(mut, seeds = [VAULT_SEED, market.key().as_ref()], bump = market.vault_bump)]
     pub vault: SystemAccount<'info>,
@@ -22,8 +21,7 @@ pub struct ClaimTeamFees<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Pays out only the team's booked fee share. The reserve and the pending
-/// fees are never touched.
+/// Pays out only the creator's booked fee share. The reserve is never touched.
 pub fn handle_claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
     let amount = ctx.accounts.market.team_fees_owed;
     require!(amount > 0, OnlyUpError::NothingToClaim);
@@ -43,7 +41,7 @@ pub fn handle_claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
         amount,
     )?;
     let m = &ctx.accounts.market;
-    check_vault_covers(ctx.accounts.vault.lamports(), m.reserve, m.pending, 0)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), m.reserve, 0)?;
     ctx.accounts.market.team_fees_owed = 0;
 
     emit!(TeamFeesClaimed {

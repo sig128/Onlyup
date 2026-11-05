@@ -3,7 +3,6 @@
 import { createHash } from "node:crypto";
 import {
   PublicKey,
-  SYSVAR_CLOCK_PUBKEY,
   SystemProgram,
   TransactionInstruction,
   type Connection,
@@ -39,11 +38,6 @@ function u16(v: number): Buffer {
   b.writeUInt16LE(v);
   return b;
 }
-function u32(v: number): Buffer {
-  const b = Buffer.alloc(4);
-  b.writeUInt32LE(v);
-  return b;
-}
 function u64(v: bigint): Buffer {
   const b = Buffer.alloc(8);
   b.writeBigUInt64LE(v);
@@ -56,10 +50,6 @@ export interface InitParams {
   buyFeeBps: number;
   sellFeeBps: number;
   teamFeeBps: number;
-  maxHypeBps: number;
-  hypeFullBps: number;
-  hypeHalfLifeSecs: number;
-  dripSecs: number;
 }
 
 export function encodeInitParams(p: InitParams): Buffer {
@@ -69,10 +59,6 @@ export function encodeInitParams(p: InitParams): Buffer {
     u16(p.buyFeeBps),
     u16(p.sellFeeBps),
     u16(p.teamFeeBps),
-    u16(p.maxHypeBps),
-    u16(p.hypeFullBps),
-    u32(p.hypeHalfLifeSecs),
-    u32(p.dripSecs),
   ]);
 }
 
@@ -189,28 +175,19 @@ export interface Market {
   mint: PublicKey;
   admin: PublicKey;
   treasury: PublicKey;
-  /** Lamports backing the price right after the last instruction. */
+  /** Lamports backing the price right now. */
   reserve: bigint;
-  /** Fees paid but not yet dripped into the reserve. */
-  pending: bigint;
   teamFeesOwed: bigint;
-  heat: bigint;
-  heatUpdatedAt: bigint;
-  lastDripAt: bigint;
   buyFeeBps: number;
   sellFeeBps: number;
   teamFeeBps: number;
-  maxHypeBps: number;
-  hypeFullBps: number;
-  hypeHalfLifeSecs: number;
-  dripSecs: number;
   buysPaused: boolean;
   createdAt: bigint;
   tradeCount: bigint;
   volumeLamports: bigint;
 }
 
-export const MARKET_SIZE = 8 + 191;
+export const MARKET_SIZE = 8 + 147;
 
 export function decodeMarket(data: Buffer): Market {
   if (data.length < MARKET_SIZE) throw new Error("not a market account");
@@ -239,11 +216,6 @@ export function decodeMarket(data: Buffer): Market {
     o += 2;
     return v;
   };
-  const rd32 = () => {
-    const v = data.readUInt32LE(o);
-    o += 4;
-    return v;
-  };
   return {
     version: u8(),
     bump: u8(),
@@ -253,18 +225,10 @@ export function decodeMarket(data: Buffer): Market {
     admin: key(),
     treasury: key(),
     reserve: rd64(),
-    pending: rd64(),
     teamFeesOwed: rd64(),
-    heat: rd64(),
-    heatUpdatedAt: ri64(),
-    lastDripAt: ri64(),
     buyFeeBps: rd16(),
     sellFeeBps: rd16(),
     teamFeeBps: rd16(),
-    maxHypeBps: rd16(),
-    hypeFullBps: rd16(),
-    hypeHalfLifeSecs: rd32(),
-    dripSecs: rd32(),
     buysPaused: u8() === 1,
     createdAt: ri64(),
     tradeCount: rd64(),
@@ -279,80 +243,11 @@ export async function fetchMarket(connection: Connection, mint: PublicKey): Prom
   return decodeMarket(info.data);
 }
 
-/** The chain's own clock (unix seconds), which is what the program uses. */
-export async function fetchChainTime(connection: Connection): Promise<bigint> {
-  const info = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
-  if (!info) throw new Error("clock sysvar not found");
-  return info.data.readBigInt64LE(32);
-}
-
 // ---------- quote math (mirrors programs/only-up/src/math.rs exactly) ----------
-
-/** Lamports of `pending` that have dripped into the reserve after `elapsed` seconds. */
-export function vest(pending: bigint, elapsed: bigint, dripSecs: number): bigint {
-  if (pending === 0n || elapsed <= 0n || dripSecs === 0) return 0n;
-  const drip = BigInt(dripSecs);
-  if (elapsed >= drip) return pending;
-  return (pending * elapsed + drip - 1n) / drip;
-}
-
-export function priceNotLower(oldReserve: bigint, oldSupply: bigint, newReserve: bigint, newSupply: bigint): boolean {
-  return newReserve * oldSupply >= oldReserve * newSupply;
-}
-
-const LN2_E12 = 693_147_180_560n;
-const E12 = 1_000_000_000_000n;
-
-function exp2NegFracE12(rem: bigint, halfLife: bigint): bigint {
-  const u = (rem * LN2_E12) / halfLife;
-  const u2 = (u * u) / E12;
-  const u3 = (u2 * u) / E12;
-  const u4 = (u3 * u) / E12;
-  const u5 = (u4 * u) / E12;
-  const u6 = (u5 * u) / E12;
-  return E12 + u2 / 2n + u4 / 24n + u6 / 720n - (u + u3 / 6n + u5 / 120n);
-}
-
-/** Heat after `elapsed` seconds: halves every half-life, smoothly. */
-export function decayHeat(heat: bigint, elapsed: bigint, halfLife: number): bigint {
-  if (heat === 0n || elapsed <= 0n || halfLife === 0) return heat;
-  const hl = BigInt(halfLife);
-  const halvings = elapsed / hl;
-  if (halvings >= 64n) return 0n;
-  const h = heat >> halvings;
-  return (h * exp2NegFracE12(elapsed % hl, hl)) / E12;
-}
-
-/** Hype level in basis points for a given heat. */
-export function hypeBps(heat: bigint, reserve: bigint, maxHype: number, hypeFull: number): number {
-  if (maxHype === 0 || heat === 0n) return 0;
-  const full = reserve * BigInt(hypeFull);
-  const scaled = heat * BPS;
-  if (full === 0n || scaled >= full) return maxHype;
-  return Number((scaled * BigInt(maxHype)) / full);
-}
-
-export const HYPE_STEPS = 8n;
-
-/** Hype fee a buy adding `toReserve` lamports pays: the average over its own heat. */
-export function buyHypeBps(heat: bigint, reserve: bigint, toReserve: bigint, maxHype: number, hypeFull: number): number {
-  if (maxHype === 0) return 0;
-  const sat = (a: bigint, b: bigint) => (a + b > U64_MAX ? U64_MAX : a + b);
-  let sum = 0n;
-  for (let i = 1n; i <= HYPE_STEPS; i++) {
-    const added = (toReserve * i) / HYPE_STEPS;
-    sum += BigInt(hypeBps(sat(heat, added), sat(reserve, added), maxHype, hypeFull));
-  }
-  return Number((sum + HYPE_STEPS - 1n) / HYPE_STEPS);
-}
 
 export interface BuyQuote {
   teamFee: bigint;
   toReserve: bigint;
-  /** Joins the reserve at once. */
-  fair: bigint;
-  /** Drips into the reserve over the drip window. */
-  toPending: bigint;
   tokensOut: bigint;
 }
 
@@ -360,7 +255,7 @@ export interface SellQuote {
   gross: bigint;
   teamFee: bigint;
   userOut: bigint;
-  toPending: bigint;
+  holderFee: bigint;
 }
 
 /** Same as the program's quote_buy. Returns null where the program would refuse. */
@@ -370,91 +265,40 @@ export function quoteBuy(
   supply: bigint,
   buyFee: number,
   teamFee: number,
-  hype: number,
 ): BuyQuote | null {
   if (reserve === 0n || supply === 0n) return null;
   const team = (solIn * BigInt(teamFee)) / BPS;
   const toReserve = solIn - team;
   const atPrice = (toReserve * supply) / reserve;
   if (atPrice * BPS > U128_MAX) return null;
-  const tokensOut = (atPrice * BPS) / (BPS + BigInt(buyFee) + BigInt(hype));
+  const tokensOut = (atPrice * BPS) / (BPS + BigInt(buyFee));
   if (tokensOut > U64_MAX) return null;
-  const fair = (tokensOut * reserve + supply - 1n) / supply;
-  if (fair > U64_MAX || fair > toReserve) return null;
-  return { teamFee: team, toReserve, fair, toPending: toReserve - fair, tokensOut };
+  return { teamFee: team, toReserve, tokensOut };
 }
 
-/** Same as the program's quote_buy_full: works out this buy's hype fee, then quotes it. */
-export function quoteBuyFull(
-  solIn: bigint,
-  reserve: bigint,
-  supply: bigint,
-  heat: bigint,
-  buyFee: number,
-  teamFee: number,
-  maxHype: number,
-  hypeFull: number,
-): { quote: BuyQuote; hype: number } | null {
-  const team = (solIn * BigInt(teamFee)) / BPS;
-  const hype = buyHypeBps(heat, reserve, solIn - team, maxHype, hypeFull);
-  const quote = quoteBuy(solIn, reserve, supply, buyFee, teamFee, hype);
-  return quote ? { quote, hype } : null;
-}
-
-/** Same as the program's quote_sell. Sells always pass a hype of 0. */
+/** Same as the program's quote_sell. Returns null where the program would refuse. */
 export function quoteSell(
   tokensIn: bigint,
   reserve: bigint,
   supply: bigint,
   sellFee: number,
   teamFee: number,
-  hype = 0,
 ): SellQuote | null {
   if (supply === 0n || tokensIn >= supply) return null;
-  const kept = BigInt(sellFee) + BigInt(hype) + BigInt(teamFee);
+  const kept = BigInt(sellFee) + BigInt(teamFee);
   if (kept >= BPS) return null;
   const gross = (tokensIn * reserve) / supply;
   const team = (gross * BigInt(teamFee)) / BPS;
   const userOut = (gross * (BPS - kept)) / BPS;
-  return { gross, teamFee: team, userOut, toPending: gross - userOut - team };
+  return { gross, teamFee: team, userOut, holderFee: gross - userOut - team };
 }
 
-// ---------- the market right now ----------
-
-export interface MarketNow {
-  /** Reserve including everything that has dripped in by `now`. */
-  reserve: bigint;
-  /** Fees still waiting to drip in. */
-  pending: bigint;
-  /** Heat decayed to `now`. */
-  heat: bigint;
-  supply: bigint;
-  now: bigint;
+export function quoteBuyMarket(m: Market, supply: bigint, solIn: bigint) {
+  return quoteBuy(solIn, m.reserve, supply, m.buyFeeBps, m.teamFeeBps);
 }
 
-/** What the program will see if an instruction runs at `now`. */
-export function marketNow(m: Market, supply: bigint, now: bigint): MarketNow {
-  const vested = vest(m.pending, now - m.lastDripAt, m.dripSecs);
-  return {
-    reserve: m.reserve + vested,
-    pending: m.pending - vested,
-    heat: decayHeat(m.heat, now - m.heatUpdatedAt, m.hypeHalfLifeSecs),
-    supply,
-    now,
-  };
-}
-
-export function quoteBuyNow(m: Market, s: MarketNow, solIn: bigint) {
-  return quoteBuyFull(solIn, s.reserve, s.supply, s.heat, m.buyFeeBps, m.teamFeeBps, m.maxHypeBps, m.hypeFullBps);
-}
-
-export function quoteSellNow(m: Market, s: MarketNow, tokensIn: bigint) {
-  return quoteSell(tokensIn, s.reserve, s.supply, m.sellFeeBps, m.teamFeeBps, 0);
-}
-
-/** Hype fee a tiny buy would pay right now, in basis points. */
-export function currentHype(m: Market, s: MarketNow): number {
-  return hypeBps(s.heat, s.reserve, m.maxHypeBps, m.hypeFullBps);
+export function quoteSellMarket(m: Market, supply: bigint, tokensIn: bigint) {
+  return quoteSell(tokensIn, m.reserve, supply, m.sellFeeBps, m.teamFeeBps);
 }
 
 /** SOL per whole token, as a float for display. */

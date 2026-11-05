@@ -25,29 +25,26 @@ const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey);
 
 const m = await lib.fetchMarket(connection, mint);
 const supply = BigInt((await connection.getTokenSupply(mint)).value.amount);
-// Quote with the chain's clock, so the drip and the heat match what the program will see.
-const now = lib.marketNow(m, supply, await lib.fetchChainTime(connection));
 const tx = new Transaction();
 
 if (side === "buy") {
   if (m.buysPaused) throw new Error("buying is paused right now (selling always works)");
   const solIn = BigInt(Math.round(Number(amountArg) * LAMPORTS_PER_SOL));
-  const q = lib.quoteBuyNow(m, now, solIn);
-  if (!q || q.quote.tokensOut === 0n) throw new Error("amount too small");
+  const q = lib.quoteBuyMarket(m, supply, solIn);
+  if (!q || q.tokensOut === 0n) throw new Error("amount too small");
   console.log(
-    `Buying about ${Number(q.quote.tokensOut) / 10 ** lib.DECIMALS} tokens ` +
-      `(fee ${m.buyFeeBps / 100}% + team ${m.teamFeeBps / 100}% + hype ${q.hype / 100}%)`,
+    `Buying about ${Number(q.tokensOut) / 10 ** lib.DECIMALS} tokens ` +
+      `(fee ${m.buyFeeBps / 100}% + creator ${m.teamFeeBps / 100}%)`,
   );
   tx.add(
     createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, ata, wallet.publicKey, mint),
-    lib.buyIx(wallet.publicKey, mint, ata, solIn, withSlippage(q.quote.tokensOut)),
+    lib.buyIx(wallet.publicKey, mint, ata, solIn, withSlippage(q.tokensOut)),
   );
 } else if (side === "sell") {
   const held = BigInt((await connection.getTokenAccountBalance(ata)).value.amount);
   const tokensIn = amountArg === "all" ? held : BigInt(Math.round(Number(amountArg) * 10 ** lib.DECIMALS));
   if (tokensIn > held) throw new Error(`you only hold ${Number(held) / 10 ** lib.DECIMALS} tokens`);
-  // Sells never pay the hype fee.
-  const q = lib.quoteSellNow(m, now, tokensIn);
+  const q = lib.quoteSellMarket(m, supply, tokensIn);
   if (!q || q.userOut === 0n) throw new Error("amount too small");
   console.log(`Selling for about ${Number(q.userOut) / LAMPORTS_PER_SOL} SOL`);
   tx.add(lib.sellIx(wallet.publicKey, mint, ata, tokensIn, withSlippage(q.userOut)));

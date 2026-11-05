@@ -1,9 +1,9 @@
 //! ONLY UP: a token whose price in SOL can never go down.
 //!
 //! The program itself is the market. Buying mints new tokens at the vault
-//! price plus fees. Selling burns tokens and pays out the vault price minus
-//! fees. The fees stay in the vault and drip into the price over the drip
-//! window, so the SOL backing each token only ever grows.
+//! price plus a fee. Selling burns tokens and pays out the vault price minus
+//! a fee. The holder fee stays in the vault and joins the price on the spot,
+//! so the SOL backing each token only ever grows.
 //!
 //! Price = SOL reserve in the vault / token supply.
 //!
@@ -35,25 +35,24 @@ pub mod only_up {
     }
 
     /// Pays `sol_in` lamports and receives newly minted tokens at the vault
-    /// price plus fees. Fails if fewer than `min_tokens_out` would arrive.
+    /// price plus the buy fee. Fails if fewer than `min_tokens_out` would arrive.
     pub fn buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result<()> {
         instructions::buy::handle_buy(ctx, sol_in, min_tokens_out)
     }
 
-    /// Burns `tokens_in` and receives SOL at the vault price minus the fixed
-    /// sell fee. Fails if less than `min_sol_out` would arrive. Can never be
-    /// paused, and never pays the hype fee.
+    /// Burns `tokens_in` and receives SOL at the vault price minus the sell
+    /// fee. Fails if less than `min_sol_out` would arrive. Can never be paused.
     pub fn sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Result<()> {
         instructions::sell::handle_sell(ctx, tokens_in, min_sol_out)
     }
 
-    /// Adds SOL that drips into the reserve without minting anything, which
+    /// Adds SOL straight into the reserve without minting anything, which
     /// raises the price for every holder.
     pub fn donate(ctx: Context<Donate>, lamports: u64) -> Result<()> {
         instructions::donate::handle_donate(ctx, lamports)
     }
 
-    /// Sends the team's accumulated fee share to the treasury. Anyone can
+    /// Sends the creator's accumulated fee share to the treasury. Anyone can
     /// call it; the money can only go to the stored treasury address.
     pub fn claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
         instructions::claim_team_fees::handle_claim_team_fees(ctx)
@@ -64,7 +63,7 @@ pub mod only_up {
         instructions::admin::handle_set_buys_paused(ctx, paused)
     }
 
-    /// Admin only. Changes where the team's fee share is sent. The new
+    /// Admin only. Changes where the creator's fee share is sent. The new
     /// treasury must be an ordinary wallet.
     pub fn set_treasury(ctx: Context<SetTreasury>) -> Result<()> {
         instructions::admin::handle_set_treasury(ctx)

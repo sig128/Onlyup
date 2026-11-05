@@ -5,9 +5,8 @@ use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount};
 use crate::constants::*;
 use crate::errors::OnlyUpError;
 use crate::events::Traded;
-use crate::instructions::{apply_drip, check_vault_covers};
+use crate::instructions::check_vault_covers;
 use crate::math;
-use crate::state::Market;
 
 #[derive(Accounts)]
 pub struct Buy<'info> {
@@ -23,7 +22,7 @@ pub struct Buy<'info> {
         bump = market.bump,
         has_one = mint,
     )]
-    pub market: Account<'info, Market>,
+    pub market: Account<'info, crate::state::Market>,
 
     #[account(mut, seeds = [VAULT_SEED, market.key().as_ref()], bump = market.vault_bump)]
     pub vault: SystemAccount<'info>,
@@ -40,43 +39,25 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
     require!(sol_in > 0, OnlyUpError::ZeroAmount);
     require!(!ctx.accounts.market.buys_paused, OnlyUpError::BuysPaused);
 
-    let now = Clock::get()?.unix_timestamp;
-    apply_drip(&mut ctx.accounts.market, now)?;
-
     let m = &ctx.accounts.market;
     let reserve = m.reserve;
     let supply = ctx.accounts.mint.supply;
-    let heat = math::decay_heat(m.heat, now.saturating_sub(m.heat_updated_at), m.hype_half_life_secs);
-    // The hype fee covers the heat this buy itself creates, so nobody can
-    // push the next buyer into a high hype fee for free.
-    let (quote, hype) = math::quote_buy_full(
-        sol_in,
-        reserve,
-        supply,
-        heat,
-        m.buy_fee_bps,
-        m.team_fee_bps,
-        m.max_hype_bps,
-        m.hype_full_bps,
-    )
-    .ok_or(OnlyUpError::MathOverflow)?;
+    let quote = math::quote_buy(sol_in, reserve, supply, m.buy_fee_bps, m.team_fee_bps)
+        .ok_or(OnlyUpError::MathOverflow)?;
     require!(quote.tokens_out > 0, OnlyUpError::ZeroOutput);
     require!(quote.tokens_out >= min_tokens_out, OnlyUpError::SlippageExceeded);
 
-    let new_reserve = reserve.checked_add(quote.fair).ok_or(OnlyUpError::MathOverflow)?;
-    let new_pending = m.pending.checked_add(quote.to_pending).ok_or(OnlyUpError::MathOverflow)?;
+    // The holder part goes straight into the reserve, so the price rises now.
+    let new_reserve = reserve.checked_add(quote.to_reserve).ok_or(OnlyUpError::MathOverflow)?;
     let new_supply = supply.checked_add(quote.tokens_out).ok_or(OnlyUpError::MathOverflow)?;
-    let new_owed = m
-        .team_fees_owed
-        .checked_add(quote.team_fee)
-        .ok_or(OnlyUpError::MathOverflow)?;
+    let new_owed = m.team_fees_owed.checked_add(quote.team_fee).ok_or(OnlyUpError::MathOverflow)?;
     require!(
         math::price_not_lower(reserve, supply, new_reserve, new_supply),
         OnlyUpError::PriceWouldDrop
     );
     let market_bump = m.bump;
 
-    // All of the SOL goes into the vault. The team share is booked separately.
+    // All of the SOL goes into the vault. The creator share is booked separately.
     system_program::transfer(
         CpiContext::new(
             ctx.accounts.system_program.to_account_info(),
@@ -106,15 +87,13 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
 
     ctx.accounts.mint.reload()?;
     require!(ctx.accounts.mint.supply == new_supply, OnlyUpError::SupplyMismatch);
-    check_vault_covers(ctx.accounts.vault.lamports(), new_reserve, new_pending, new_owed)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), new_reserve, new_owed)?;
 
+    let now = Clock::get()?.unix_timestamp;
     let market_key = ctx.accounts.market.key();
     let market = &mut ctx.accounts.market;
     market.reserve = new_reserve;
-    market.pending = new_pending;
     market.team_fees_owed = new_owed;
-    market.heat = heat.saturating_add(quote.to_reserve);
-    market.heat_updated_at = now;
     market.trade_count = market.trade_count.saturating_add(1);
     market.volume_lamports = market.volume_lamports.saturating_add(sol_in);
 
@@ -124,10 +103,8 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
         is_buy: true,
         sol_amount: sol_in,
         token_amount: quote.tokens_out,
-        hype_bps: hype,
         team_fee: quote.team_fee,
         reserve_after: new_reserve,
-        pending_after: new_pending,
         supply_after: new_supply,
         timestamp: now,
     });

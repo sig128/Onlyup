@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 use crate::constants::*;
 use crate::errors::OnlyUpError;
 use crate::events::{AdminRenounced, BuysPausedSet, TreasurySet};
-use crate::state::Market;
 
 /// The admin can only pause buying and change the treasury. The admin cannot
 /// touch the vault, change fees, mint tokens or stop anyone from selling.
@@ -17,7 +16,7 @@ pub struct AdminOnly<'info> {
         bump = market.bump,
         has_one = admin,
     )]
-    pub market: Account<'info, Market>,
+    pub market: Account<'info, crate::state::Market>,
 }
 
 #[derive(Accounts)]
@@ -30,9 +29,9 @@ pub struct SetTreasury<'info> {
         bump = market.bump,
         has_one = admin,
     )]
-    pub market: Account<'info, Market>,
+    pub market: Account<'info, crate::state::Market>,
 
-    /// The new treasury: an ordinary wallet, so team fees can always be claimed.
+    /// The new treasury: an ordinary wallet, so creator fees can always be claimed.
     pub new_treasury: SystemAccount<'info>,
 }
 
