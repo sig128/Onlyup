@@ -1,30 +1,35 @@
 /// Seeds for the market account: [MARKET_SEED, mint].
 pub const MARKET_SEED: &[u8] = b"market";
-/// Seeds for the SOL vault: [VAULT_SEED, market].
+/// Seeds for the SOL vault: [VAULT_SEED, market]. Holds the curve reserve, the
+/// floor reserve and unclaimed creator fees. Only the program can sign for it.
 pub const VAULT_SEED: &[u8] = b"vault";
-/// Seeds for the token account holding the locked seed tokens: [LOCKED_SEED, market].
-pub const LOCKED_SEED: &[u8] = b"locked";
 
 /// Layout version of the `Market` account.
-pub const MARKET_VERSION: u8 = 1;
+pub const MARKET_VERSION: u8 = 2;
 
 /// The token always has 6 decimals.
 pub const DECIMALS: u8 = 6;
 
-// Hard limits, fixed in code, so no deployment can turn the token into a trap.
+/// Basis-point denominator.
+pub const BPS: u128 = 10_000;
 
-/// Fee kept for holders, on each side. Every trade pays at least 0.1%, so
-/// every trade lifts the price, and at most 5%, so getting out stays cheap.
-pub const MIN_FEE_BPS: u16 = 10;
-pub const MAX_BUY_FEE_BPS: u16 = 500;
-pub const MAX_SELL_FEE_BPS: u16 = 500;
-/// Creator share of each trade: at most 2%.
-pub const MAX_TEAM_FEE_BPS: u16 = 200;
+/// Creator fee taken from every buy and every sell, in basis points. Fixed in
+/// code at 1% so no deployment can turn it into a honeypot.
+pub const CREATOR_FEE_BPS: u128 = 100;
 
-/// Minimum seed: 0.01 SOL and 1,000,000 base units of the token.
-pub const MIN_SEED_LAMPORTS: u64 = 10_000_000;
+/// Share of each buy (after the creator fee) routed into the floor reserve, in
+/// basis points. Fixed at 25% — the "dial" that trades curve upside for a
+/// stronger, faster-rising floor.
+pub const FLOOR_BPS: u128 = 2_500;
+
+// ---- launch bounds, fixed in code ----
+
+/// Minimum curve seed: 0.02 SOL of real liquidity.
+pub const MIN_SEED_LAMPORTS: u64 = 20_000_000;
+/// Minimum / maximum virtual token reserve (also the asymptotic supply cap).
+/// 1e6 .. 1e18 base units (with 6 decimals: 1 .. 1,000,000,000,000 whole tokens).
 pub const MIN_SEED_TOKENS: u64 = 1_000_000;
-/// The starting price may not be absurdly low: at most 1,000 token base units
-/// per seed lamport. With 6 decimals that is 0.000001 SOL per token. The price
-/// only rises from there, so token amounts stay far below the u64 limit.
-pub const MAX_SEED_TOKENS_PER_LAMPORT: u64 = 1_000;
+pub const MAX_SEED_TOKENS: u64 = 1_000_000_000_000_000_000;
+/// The starting curve price may not be absurdly low: at most this many token
+/// base units per seed lamport. Keeps token amounts far below the u64 ceiling.
+pub const MAX_SEED_TOKENS_PER_LAMPORT: u64 = 1_000_000;

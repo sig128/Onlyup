@@ -35,30 +35,41 @@ pub struct Sell<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Selling has no pause switch and no admin check: it always works, and always
-/// costs the same fixed fee.
+/// Selling has no pause switch and no admin check: it always works. The seller
+/// is paid the better of the curve price or the floor; a floor redemption can
+/// never lower the floor for everyone else.
 pub fn handle_sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Result<()> {
     require!(tokens_in > 0, OnlyUpError::ZeroAmount);
 
     let m = &ctx.accounts.market;
-    let reserve = m.reserve;
+    let curve_sol = m.curve_sol;
+    let floor_reserve = m.floor_reserve;
     let supply = ctx.accounts.mint.supply;
     require!(tokens_in < supply, OnlyUpError::SellTooLarge);
-    let quote = math::quote_sell(tokens_in, reserve, supply, m.sell_fee_bps, m.team_fee_bps)
+    let tc = m.total_supply - supply; // virtual token reserve
+
+    let quote = math::quote_sell(tokens_in, curve_sol, tc, floor_reserve, supply)
         .ok_or(OnlyUpError::MathOverflow)?;
     require!(quote.user_out > 0, OnlyUpError::ZeroOutput);
     require!(quote.user_out >= min_sol_out, OnlyUpError::SlippageExceeded);
 
-    // The seller takes `user_out`, the creator fee is booked, and the holder
-    // fee stays behind, so the reserve only falls by `user_out + team_fee`.
-    let leaving = quote.user_out.checked_add(quote.team_fee).ok_or(OnlyUpError::MathOverflow)?;
-    let new_reserve = reserve.checked_sub(leaving).ok_or(OnlyUpError::MathOverflow)?;
+    let new_curve_sol = quote.new_curve_sol;
+    let new_floor = quote.new_floor_reserve;
     let new_supply = supply - tokens_in;
-    let new_owed = m.team_fees_owed.checked_add(quote.team_fee).ok_or(OnlyUpError::MathOverflow)?;
+    let new_owed = m.creator_fees_owed.checked_add(quote.creator_fee).ok_or(OnlyUpError::MathOverflow)?;
+
     require!(
-        math::price_not_lower(reserve, supply, new_reserve, new_supply),
-        OnlyUpError::PriceWouldDrop
+        math::floor_not_lower(floor_reserve, supply, new_floor, new_supply),
+        OnlyUpError::FloorWouldDrop
     );
+    // The reserve the payout comes out of must actually drop by the gross.
+    if quote.from_floor {
+        require!(new_floor == floor_reserve.checked_sub(quote.gross).ok_or(OnlyUpError::FloorShortfall)?, OnlyUpError::FloorShortfall);
+        require!(new_curve_sol == curve_sol, OnlyUpError::MathOverflow);
+    } else {
+        require!(new_curve_sol == curve_sol.checked_sub(quote.gross).ok_or(OnlyUpError::VaultShortfall)?, OnlyUpError::VaultShortfall);
+        require!(new_floor == floor_reserve, OnlyUpError::MathOverflow);
+    }
     let vault_bump = m.vault_bump;
 
     token::burn(
@@ -89,12 +100,13 @@ pub fn handle_sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Resu
         ),
         quote.user_out,
     )?;
-    check_vault_covers(ctx.accounts.vault.lamports(), new_reserve, new_owed)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), new_curve_sol, new_floor, new_owed)?;
 
     let now = Clock::get()?.unix_timestamp;
     let market = &mut ctx.accounts.market;
-    market.reserve = new_reserve;
-    market.team_fees_owed = new_owed;
+    market.curve_sol = new_curve_sol;
+    market.floor_reserve = new_floor;
+    market.creator_fees_owed = new_owed;
     market.trade_count = market.trade_count.saturating_add(1);
     market.volume_lamports = market.volume_lamports.saturating_add(quote.gross);
 
@@ -102,10 +114,12 @@ pub fn handle_sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Resu
         market: market_key,
         trader: ctx.accounts.seller.key(),
         is_buy: false,
+        floor_redeem: quote.from_floor,
         sol_amount: quote.user_out,
         token_amount: tokens_in,
-        team_fee: quote.team_fee,
-        reserve_after: new_reserve,
+        creator_fee: quote.creator_fee,
+        curve_sol_after: new_curve_sol,
+        floor_reserve_after: new_floor,
         supply_after: new_supply,
         timestamp: now,
     });

@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{self, Transfer};
 use anchor_spl::token::spl_token::instruction::AuthorityType;
-use anchor_spl::token::{self, Mint, MintTo, SetAuthority, Token, TokenAccount};
+use anchor_spl::token::{self, Mint, SetAuthority, Token};
 
 use crate::constants::*;
 use crate::errors::OnlyUpError;
@@ -11,17 +11,12 @@ use crate::state::Market;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitParams {
-    /// Lamports put in the reserve and locked forever.
+    /// Real SOL seeded into the curve reserve (lamports). Locked: the curve
+    /// reserve never falls below it, since the virtual token side is capped.
     pub seed_lamports: u64,
-    /// Token base units minted into the locked account forever.
-    /// Starting price = seed_lamports / seed_tokens.
+    /// Virtual token reserve at launch, and the asymptotic supply cap
+    /// (base units). Starting curve price = seed_lamports / seed_tokens.
     pub seed_tokens: u64,
-    /// Holder fee on buys, in basis points (e.g. 250 = 2.5%).
-    pub buy_fee_bps: u16,
-    /// Holder fee on sells, in basis points.
-    pub sell_fee_bps: u16,
-    /// Creator share of every buy and sell, in basis points (e.g. 50 = 0.5%).
-    pub team_fee_bps: u16,
 }
 
 #[derive(Accounts)]
@@ -43,20 +38,10 @@ pub struct Initialize<'info> {
     )]
     pub market: Account<'info, Market>,
 
-    /// Holds the SOL. Only this program can sign for it.
+    /// Holds the SOL (curve reserve + floor reserve + unclaimed creator fees).
+    /// Only this program can sign for it.
     #[account(mut, seeds = [VAULT_SEED, market.key().as_ref()], bump)]
     pub vault: SystemAccount<'info>,
-
-    /// Holds the seed tokens forever. No instruction ever moves them.
-    #[account(
-        init,
-        payer = admin,
-        seeds = [LOCKED_SEED, market.key().as_ref()],
-        bump,
-        token::mint = mint,
-        token::authority = market,
-    )]
-    pub locked_tokens: Account<'info, TokenAccount>,
 
     /// An ordinary wallet that may receive the creator's fee share.
     pub treasury: SystemAccount<'info>,
@@ -66,20 +51,9 @@ pub struct Initialize<'info> {
 }
 
 pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> {
-    require!(
-        (MIN_FEE_BPS..=MAX_BUY_FEE_BPS).contains(&p.buy_fee_bps)
-            && (MIN_FEE_BPS..=MAX_SELL_FEE_BPS).contains(&p.sell_fee_bps)
-            && p.team_fee_bps <= MAX_TEAM_FEE_BPS,
-        OnlyUpError::BadFeeSettings
-    );
-    // A buy lifts the price by at most the buy fee, so an exit fee at least as
-    // large means a round trip around another trader can never turn a profit.
-    // This is what keeps buys from being sandwiched, with fees landing instantly.
-    require!(p.sell_fee_bps >= p.buy_fee_bps, OnlyUpError::LopsidedFees);
-    require!(
-        p.seed_lamports >= MIN_SEED_LAMPORTS && p.seed_tokens >= MIN_SEED_TOKENS,
-        OnlyUpError::SeedTooSmall
-    );
+    require!(p.seed_lamports >= MIN_SEED_LAMPORTS, OnlyUpError::SeedTooSmall);
+    require!(p.seed_tokens >= MIN_SEED_TOKENS, OnlyUpError::SeedTooSmall);
+    require!(p.seed_tokens <= MAX_SEED_TOKENS, OnlyUpError::SeedTooLarge);
     require!(
         p.seed_tokens / p.seed_lamports <= MAX_SEED_TOKENS_PER_LAMPORT,
         OnlyUpError::StartPriceTooLow
@@ -102,7 +76,8 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         require!(mint.freeze_authority.is_none(), OnlyUpError::FreezeAuthoritySet);
     }
 
-    // Hand the mint authority to the market, for good.
+    // Hand the mint authority to the market, for good. From here, tokens are
+    // only ever minted against a paid buy and burned on a sell.
     token::set_authority(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -116,7 +91,6 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
     )?;
 
     // Fund the vault with its rent-exempt minimum plus the seed reserve.
-    // Anything someone sent to the vault address earlier simply stays there.
     let rent_min = Rent::get()?.minimum_balance(0);
     let top_up = rent_min
         .saturating_sub(ctx.accounts.vault.lamports())
@@ -133,23 +107,7 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         top_up,
     )?;
 
-    // Mint the seed tokens into the locked account.
-    let bump = [ctx.bumps.market];
-    let signer_seeds: &[&[&[u8]]] = &[&[MARKET_SEED, mint_key.as_ref(), &bump]];
-    token::mint_to(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            MintTo {
-                mint: ctx.accounts.mint.to_account_info(),
-                to: ctx.accounts.locked_tokens.to_account_info(),
-                authority: ctx.accounts.market.to_account_info(),
-            },
-            signer_seeds,
-        ),
-        p.seed_tokens,
-    )?;
-
-    check_vault_covers(ctx.accounts.vault.lamports(), p.seed_lamports, 0)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), p.seed_lamports, 0, 0)?;
 
     let now = Clock::get()?.unix_timestamp;
     let treasury = ctx.accounts.treasury.key();
@@ -157,15 +115,13 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         version: MARKET_VERSION,
         bump: ctx.bumps.market,
         vault_bump: ctx.bumps.vault,
-        locked_bump: ctx.bumps.locked_tokens,
         mint: mint_key,
         admin,
         treasury,
-        reserve: p.seed_lamports,
-        team_fees_owed: 0,
-        buy_fee_bps: p.buy_fee_bps,
-        sell_fee_bps: p.sell_fee_bps,
-        team_fee_bps: p.team_fee_bps,
+        curve_sol: p.seed_lamports,
+        floor_reserve: 0,
+        total_supply: p.seed_tokens,
+        creator_fees_owed: 0,
         buys_paused: false,
         created_at: now,
         trade_count: 0,
@@ -177,11 +133,8 @@ pub fn handle_initialize(ctx: Context<Initialize>, p: InitParams) -> Result<()> 
         mint: mint_key,
         admin,
         treasury,
-        reserve: p.seed_lamports,
-        supply: p.seed_tokens,
-        buy_fee_bps: p.buy_fee_bps,
-        sell_fee_bps: p.sell_fee_bps,
-        team_fee_bps: p.team_fee_bps,
+        curve_sol: p.seed_lamports,
+        total_supply: p.seed_tokens,
         timestamp: now,
     });
     Ok(())

@@ -3,11 +3,11 @@ use anchor_lang::system_program::{self, Transfer};
 
 use crate::constants::*;
 use crate::errors::OnlyUpError;
-use crate::events::TeamFeesClaimed;
+use crate::events::CreatorFeesClaimed;
 use crate::instructions::check_vault_covers;
 
 #[derive(Accounts)]
-pub struct ClaimTeamFees<'info> {
+pub struct ClaimCreatorFees<'info> {
     #[account(mut, seeds = [MARKET_SEED, market.mint.as_ref()], bump = market.bump)]
     pub market: Account<'info, crate::state::Market>,
 
@@ -21,9 +21,10 @@ pub struct ClaimTeamFees<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Pays out only the creator's booked fee share. The reserve is never touched.
-pub fn handle_claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
-    let amount = ctx.accounts.market.team_fees_owed;
+/// Pays out only the creator's booked fee share. Neither reserve is touched.
+/// Anyone can trigger it, but the SOL only ever goes to the stored treasury.
+pub fn handle_claim_creator_fees(ctx: Context<ClaimCreatorFees>) -> Result<()> {
+    let amount = ctx.accounts.market.creator_fees_owed;
     require!(amount > 0, OnlyUpError::NothingToClaim);
 
     let market_key = ctx.accounts.market.key();
@@ -41,10 +42,10 @@ pub fn handle_claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
         amount,
     )?;
     let m = &ctx.accounts.market;
-    check_vault_covers(ctx.accounts.vault.lamports(), m.reserve, 0)?;
-    ctx.accounts.market.team_fees_owed = 0;
+    check_vault_covers(ctx.accounts.vault.lamports(), m.curve_sol, m.floor_reserve, 0)?;
+    ctx.accounts.market.creator_fees_owed = 0;
 
-    emit!(TeamFeesClaimed {
+    emit!(CreatorFeesClaimed {
         market: market_key,
         treasury: ctx.accounts.treasury.key(),
         lamports: amount,

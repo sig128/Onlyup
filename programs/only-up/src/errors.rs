@@ -10,16 +10,14 @@ pub enum OnlyUpError {
     SlippageExceeded,
     #[msg("Buying is paused")]
     BuysPaused,
-    #[msg("This trade would lower the price, so it was cancelled")]
-    PriceWouldDrop,
+    #[msg("This trade would lower the floor, so it was cancelled")]
+    FloorWouldDrop,
     #[msg("Math overflow")]
     MathOverflow,
-    #[msg("Fee settings are outside the allowed range")]
-    BadFeeSettings,
-    #[msg("The sell fee must be at least the buy fee, so trades can't be sandwiched")]
-    LopsidedFees,
     #[msg("Seed SOL or seed tokens are below the minimum")]
     SeedTooSmall,
+    #[msg("Seed tokens are above the maximum")]
+    SeedTooLarge,
     #[msg("Starting price is too low: too many seed tokens per lamport")]
     StartPriceTooLow,
     #[msg("The mint must have zero supply")]
@@ -40,4 +38,8 @@ pub enum OnlyUpError {
     SupplyMismatch,
     #[msg("Vault balance is lower than the books say")]
     VaultShortfall,
+    #[msg("Floor reserve is lower than the books say")]
+    FloorShortfall,
+    #[msg("Caller is not the admin")]
+    NotAdmin,
 }

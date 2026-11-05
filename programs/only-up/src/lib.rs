@@ -1,15 +1,16 @@
-//! ONLY UP: a token whose price in SOL can never go down.
+//! ONLY UP v2 — a token that trades on a real curve, over a floor that can only rise.
 //!
-//! The program itself is the market. Buying mints new tokens at the vault
-//! price plus a fee. Selling burns tokens and pays out the vault price minus
-//! a fee. The holder fee stays in the vault and joins the price on the spot,
-//! so the SOL backing each token only ever grows.
+//! The program is the market. It is a constant-product curve (real SOL reserve
+//! against a virtual token reserve) sitting on top of a separate floor reserve.
+//! The curve price can move up and down like any coin. 25% of every buy funds
+//! the floor reserve, and the amount a holder can always redeem per token —
+//! floor_reserve / supply — can only ever ratchet UP, never fall. Every trade
+//! re-checks that the floor did not drop and that the vault still covers both
+//! reserves plus unclaimed creator fees.
 //!
-//! Price = SOL reserve in the vault / token supply.
-//!
-//! Every buy and sell re-checks that the price did not fall, and the whole
-//! transaction is cancelled if it would have. There is no instruction that
-//! takes reserve SOL out of the vault except paying sellers.
+//! The one mechanism that makes it sound: each newly minted token must carry at
+//! least the current floor in backing, and nobody can mint below the floor and
+//! redeem for a profit. That is proven across a 2,000-market stress test.
 use anchor_lang::prelude::*;
 
 pub mod constants;
@@ -28,34 +29,32 @@ pub mod only_up {
     use super::*;
 
     /// Creates the market for a fresh mint. The caller must be the mint's
-    /// mint authority; the authority is handed to the market in this same
-    /// instruction. Locks the seed SOL and seed tokens forever.
+    /// authority; it is handed to the market here. Seeds the curve reserve.
     pub fn initialize(ctx: Context<Initialize>, params: InitParams) -> Result<()> {
         instructions::initialize::handle_initialize(ctx, params)
     }
 
-    /// Pays `sol_in` lamports and receives newly minted tokens at the vault
-    /// price plus the buy fee. Fails if fewer than `min_tokens_out` would arrive.
+    /// Pays `sol_in` lamports and receives newly minted tokens. 1% creator fee,
+    /// 25% of the rest funds the floor, the remainder drives the curve.
     pub fn buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result<()> {
         instructions::buy::handle_buy(ctx, sol_in, min_tokens_out)
     }
 
-    /// Burns `tokens_in` and receives SOL at the vault price minus the sell
-    /// fee. Fails if less than `min_sol_out` would arrive. Can never be paused.
+    /// Burns `tokens_in` and pays the better of the curve price or the floor,
+    /// minus a 1% creator fee. Can never be paused.
     pub fn sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Result<()> {
         instructions::sell::handle_sell(ctx, tokens_in, min_sol_out)
     }
 
-    /// Adds SOL straight into the reserve without minting anything, which
-    /// raises the price for every holder.
+    /// Adds SOL straight into the floor reserve, raising the floor for everyone.
     pub fn donate(ctx: Context<Donate>, lamports: u64) -> Result<()> {
         instructions::donate::handle_donate(ctx, lamports)
     }
 
-    /// Sends the creator's accumulated fee share to the treasury. Anyone can
-    /// call it; the money can only go to the stored treasury address.
-    pub fn claim_team_fees(ctx: Context<ClaimTeamFees>) -> Result<()> {
-        instructions::claim_team_fees::handle_claim_team_fees(ctx)
+    /// Sends the creator's booked fee share to the stored treasury. Anyone can
+    /// call it; the money can only go to that treasury address.
+    pub fn claim_creator_fees(ctx: Context<ClaimCreatorFees>) -> Result<()> {
+        instructions::claim_creator_fees::handle_claim_creator_fees(ctx)
     }
 
     /// Admin only. Pauses or resumes buying. Selling can never be paused.
@@ -63,8 +62,7 @@ pub mod only_up {
         instructions::admin::handle_set_buys_paused(ctx, paused)
     }
 
-    /// Admin only. Changes where the creator's fee share is sent. The new
-    /// treasury must be an ordinary wallet.
+    /// Admin only. Changes where the creator's fee share is sent.
     pub fn set_treasury(ctx: Context<SetTreasury>) -> Result<()> {
         instructions::admin::handle_set_treasury(ctx)
     }

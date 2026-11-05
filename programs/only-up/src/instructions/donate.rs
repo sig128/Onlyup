@@ -20,8 +20,9 @@ pub struct Donate<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Adds SOL straight into the reserve without minting anything, so the price
-/// rises for every holder. Useful for routing outside revenue into the token.
+/// Adds SOL straight into the floor reserve without minting anything, so the
+/// floor rises for every holder. Useful for routing outside revenue into the
+/// token. Adding to the floor only ever raises floor_reserve / supply.
 pub fn handle_donate(ctx: Context<Donate>, lamports: u64) -> Result<()> {
     require!(lamports > 0, OnlyUpError::ZeroAmount);
 
@@ -37,17 +38,17 @@ pub fn handle_donate(ctx: Context<Donate>, lamports: u64) -> Result<()> {
     )?;
 
     let m = &ctx.accounts.market;
-    let new_reserve = m.reserve.checked_add(lamports).ok_or(OnlyUpError::MathOverflow)?;
-    check_vault_covers(ctx.accounts.vault.lamports(), new_reserve, m.team_fees_owed)?;
+    let new_floor = m.floor_reserve.checked_add(lamports).ok_or(OnlyUpError::MathOverflow)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), m.curve_sol, new_floor, m.creator_fees_owed)?;
     let now = Clock::get()?.unix_timestamp;
     let market_key = ctx.accounts.market.key();
-    ctx.accounts.market.reserve = new_reserve;
+    ctx.accounts.market.floor_reserve = new_floor;
 
     emit!(Donated {
         market: market_key,
         donor: ctx.accounts.donor.key(),
         lamports,
-        reserve_after: new_reserve,
+        floor_reserve_after: new_floor,
         timestamp: now,
     });
     Ok(())

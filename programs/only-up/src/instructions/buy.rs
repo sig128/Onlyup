@@ -40,24 +40,35 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
     require!(!ctx.accounts.market.buys_paused, OnlyUpError::BuysPaused);
 
     let m = &ctx.accounts.market;
-    let reserve = m.reserve;
+    let curve_sol = m.curve_sol;
+    let floor_reserve = m.floor_reserve;
     let supply = ctx.accounts.mint.supply;
-    let quote = math::quote_buy(sol_in, reserve, supply, m.buy_fee_bps, m.team_fee_bps)
+    require!(supply < m.total_supply, OnlyUpError::MathOverflow);
+    let tc = m.total_supply - supply; // virtual token reserve
+
+    let quote = math::quote_buy(sol_in, curve_sol, tc, floor_reserve, supply)
         .ok_or(OnlyUpError::MathOverflow)?;
     require!(quote.tokens_out > 0, OnlyUpError::ZeroOutput);
     require!(quote.tokens_out >= min_tokens_out, OnlyUpError::SlippageExceeded);
 
-    // The holder part goes straight into the reserve, so the price rises now.
-    let new_reserve = reserve.checked_add(quote.to_reserve).ok_or(OnlyUpError::MathOverflow)?;
+    let new_curve_sol = quote.new_curve_sol;
+    let new_floor = floor_reserve.checked_add(quote.to_floor).ok_or(OnlyUpError::MathOverflow)?;
     let new_supply = supply.checked_add(quote.tokens_out).ok_or(OnlyUpError::MathOverflow)?;
-    let new_owed = m.team_fees_owed.checked_add(quote.team_fee).ok_or(OnlyUpError::MathOverflow)?;
+    let new_owed = m.creator_fees_owed.checked_add(quote.creator_fee).ok_or(OnlyUpError::MathOverflow)?;
+
+    // The curve price may move either way, but the floor can never fall.
     require!(
-        math::price_not_lower(reserve, supply, new_reserve, new_supply),
-        OnlyUpError::PriceWouldDrop
+        math::floor_not_lower(floor_reserve, supply, new_floor, new_supply),
+        OnlyUpError::FloorWouldDrop
+    );
+    // Every lamport is accounted for: creator + floor + curve == sol_in.
+    require!(
+        quote.creator_fee as u128 + quote.to_floor as u128 + quote.to_curve as u128 == sol_in as u128,
+        OnlyUpError::MathOverflow
     );
     let market_bump = m.bump;
 
-    // All of the SOL goes into the vault. The creator share is booked separately.
+    // All of the SOL goes into the vault; the split is booked on the market.
     system_program::transfer(
         CpiContext::new(
             ctx.accounts.system_program.to_account_info(),
@@ -87,13 +98,14 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
 
     ctx.accounts.mint.reload()?;
     require!(ctx.accounts.mint.supply == new_supply, OnlyUpError::SupplyMismatch);
-    check_vault_covers(ctx.accounts.vault.lamports(), new_reserve, new_owed)?;
+    check_vault_covers(ctx.accounts.vault.lamports(), new_curve_sol, new_floor, new_owed)?;
 
     let now = Clock::get()?.unix_timestamp;
     let market_key = ctx.accounts.market.key();
     let market = &mut ctx.accounts.market;
-    market.reserve = new_reserve;
-    market.team_fees_owed = new_owed;
+    market.curve_sol = new_curve_sol;
+    market.floor_reserve = new_floor;
+    market.creator_fees_owed = new_owed;
     market.trade_count = market.trade_count.saturating_add(1);
     market.volume_lamports = market.volume_lamports.saturating_add(sol_in);
 
@@ -101,10 +113,12 @@ pub fn handle_buy(ctx: Context<Buy>, sol_in: u64, min_tokens_out: u64) -> Result
         market: market_key,
         trader: ctx.accounts.buyer.key(),
         is_buy: true,
+        floor_redeem: false,
         sol_amount: sol_in,
         token_amount: quote.tokens_out,
-        team_fee: quote.team_fee,
-        reserve_after: new_reserve,
+        creator_fee: quote.creator_fee,
+        curve_sol_after: new_curve_sol,
+        floor_reserve_after: new_floor,
         supply_after: new_supply,
         timestamp: now,
     });
