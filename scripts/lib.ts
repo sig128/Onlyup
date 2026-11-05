@@ -1,5 +1,6 @@
-// Shared client code for the ONLY UP program: addresses, instruction builders,
-// account decoding and the same quote math the program uses, to the lamport.
+// Shared client code for the ONLY UP v2 program: addresses, instruction
+// builders, account decoding and the same quote math the program uses, to the
+// lamport. Checked against Rust-generated fixtures by check-layout.ts.
 import { createHash } from "node:crypto";
 import {
   PublicKey,
@@ -12,8 +13,9 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 export const PROGRAM_ID = new PublicKey("3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS");
 export const DECIMALS = 6;
 export const BPS = 10_000n;
+export const CREATOR_FEE_BPS = 100n; // 1%, fixed in the program
+export const FLOOR_BPS = 2_500n; // 25%, fixed in the program
 const U64_MAX = (1n << 64n) - 1n;
-const U128_MAX = (1n << 128n) - 1n;
 
 // ---------- addresses ----------
 
@@ -23,9 +25,6 @@ export function marketPda(mint: PublicKey): PublicKey {
 export function vaultPda(market: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync([Buffer.from("vault"), market.toBuffer()], PROGRAM_ID)[0];
 }
-export function lockedPda(market: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync([Buffer.from("locked"), market.toBuffer()], PROGRAM_ID)[0];
-}
 
 // ---------- encoding ----------
 
@@ -33,11 +32,6 @@ export function discriminator(name: string): Buffer {
   return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
 }
 
-function u16(v: number): Buffer {
-  const b = Buffer.alloc(2);
-  b.writeUInt16LE(v);
-  return b;
-}
 function u64(v: bigint): Buffer {
   const b = Buffer.alloc(8);
   b.writeBigUInt64LE(v);
@@ -47,19 +41,10 @@ function u64(v: bigint): Buffer {
 export interface InitParams {
   seedLamports: bigint;
   seedTokens: bigint;
-  buyFeeBps: number;
-  sellFeeBps: number;
-  teamFeeBps: number;
 }
 
 export function encodeInitParams(p: InitParams): Buffer {
-  return Buffer.concat([
-    u64(p.seedLamports),
-    u64(p.seedTokens),
-    u16(p.buyFeeBps),
-    u16(p.sellFeeBps),
-    u16(p.teamFeeBps),
-  ]);
+  return Buffer.concat([u64(p.seedLamports), u64(p.seedTokens)]);
 }
 
 const w = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
@@ -78,7 +63,6 @@ export function initializeIx(admin: PublicKey, mint: PublicKey, treasury: Public
       w(mint),
       w(market),
       w(vaultPda(market)),
-      w(lockedPda(market)),
       r(treasury),
       r(TOKEN_PROGRAM_ID),
       r(SystemProgram.programId),
@@ -121,6 +105,7 @@ export function sellIx(seller: PublicKey, mint: PublicKey, sellerTokens: PublicK
   });
 }
 
+/** Adds SOL straight into the floor reserve, raising the floor for everyone. */
 export function donateIx(donor: PublicKey, mint: PublicKey, lamports: bigint) {
   const market = marketPda(mint);
   return new TransactionInstruction({
@@ -131,12 +116,12 @@ export function donateIx(donor: PublicKey, mint: PublicKey, lamports: bigint) {
 }
 
 /** Anyone can send this; the SOL can only go to the treasury stored in the market. */
-export function claimTeamFeesIx(mint: PublicKey, treasury: PublicKey) {
+export function claimCreatorFeesIx(mint: PublicKey, treasury: PublicKey) {
   const market = marketPda(mint);
   return new TransactionInstruction({
     programId: PROGRAM_ID,
     keys: [w(market), w(vaultPda(market)), w(treasury), r(SystemProgram.programId)],
-    data: discriminator("claim_team_fees"),
+    data: discriminator("claim_creator_fees"),
   });
 }
 
@@ -171,23 +156,23 @@ export interface Market {
   version: number;
   bump: number;
   vaultBump: number;
-  lockedBump: number;
   mint: PublicKey;
   admin: PublicKey;
   treasury: PublicKey;
-  /** Lamports backing the price right now. */
-  reserve: bigint;
-  teamFeesOwed: bigint;
-  buyFeeBps: number;
-  sellFeeBps: number;
-  teamFeeBps: number;
+  /** Real SOL in the constant-product curve reserve (lamports). */
+  curveSol: bigint;
+  /** Real SOL in the floor reserve (lamports). Redeemable at floorReserve/supply. */
+  floorReserve: bigint;
+  /** Virtual token reserve at launch and the asymptotic supply cap (base units). */
+  totalSupply: bigint;
+  creatorFeesOwed: bigint;
   buysPaused: boolean;
   createdAt: bigint;
   tradeCount: bigint;
   volumeLamports: bigint;
 }
 
-export const MARKET_SIZE = 8 + 147;
+export const MARKET_SIZE = 8 + 156;
 
 export function decodeMarket(data: Buffer): Market {
   if (data.length < MARKET_SIZE) throw new Error("not a market account");
@@ -211,24 +196,17 @@ export function decodeMarket(data: Buffer): Market {
     o += 8;
     return v;
   };
-  const rd16 = () => {
-    const v = data.readUInt16LE(o);
-    o += 2;
-    return v;
-  };
   return {
     version: u8(),
     bump: u8(),
     vaultBump: u8(),
-    lockedBump: u8(),
     mint: key(),
     admin: key(),
     treasury: key(),
-    reserve: rd64(),
-    teamFeesOwed: rd64(),
-    buyFeeBps: rd16(),
-    sellFeeBps: rd16(),
-    teamFeeBps: rd16(),
+    curveSol: rd64(),
+    floorReserve: rd64(),
+    totalSupply: rd64(),
+    creatorFeesOwed: rd64(),
     buysPaused: u8() === 1,
     createdAt: ri64(),
     tradeCount: rd64(),
@@ -245,63 +223,113 @@ export async function fetchMarket(connection: Connection, mint: PublicKey): Prom
 
 // ---------- quote math (mirrors programs/only-up/src/math.rs exactly) ----------
 
+function ceilDiv(a: bigint, b: bigint): bigint {
+  return (a + b - 1n) / b;
+}
+
 export interface BuyQuote {
-  teamFee: bigint;
-  toReserve: bigint;
+  creatorFee: bigint;
+  toFloor: bigint;
+  toCurve: bigint;
   tokensOut: bigint;
+  newCurveSol: bigint;
 }
 
 export interface SellQuote {
+  fromFloor: boolean;
   gross: bigint;
-  teamFee: bigint;
+  creatorFee: bigint;
   userOut: bigint;
-  holderFee: bigint;
+  newCurveSol: bigint;
+  newFloorReserve: bigint;
 }
 
-/** Same as the program's quote_buy. Returns null where the program would refuse. */
-export function quoteBuy(
-  solIn: bigint,
-  reserve: bigint,
-  supply: bigint,
-  buyFee: number,
-  teamFee: number,
-): BuyQuote | null {
-  if (reserve === 0n || supply === 0n) return null;
-  const team = (solIn * BigInt(teamFee)) / BPS;
-  const toReserve = solIn - team;
-  const atPrice = (toReserve * supply) / reserve;
-  if (atPrice * BPS > U128_MAX) return null;
-  const tokensOut = (atPrice * BPS) / (BPS + BigInt(buyFee));
-  if (tokensOut > U64_MAX) return null;
-  return { teamFee: team, toReserve, tokensOut };
+/** Same as the program's quote_buy. `tc` is the virtual token reserve
+ *  (totalSupply - supply). Returns null exactly where the program would refuse. */
+export function quoteBuy(sol: bigint, rc: bigint, tc: bigint, rf: bigint, s: bigint): BuyQuote | null {
+  if (rc === 0n || tc === 0n || sol === 0n) return null;
+  const creatorFee = (sol * CREATOR_FEE_BPS) / BPS;
+  if (creatorFee > U64_MAX) return null;
+  const avail = sol - creatorFee;
+  const baseFloor = (avail * FLOOR_BPS) / BPS;
+  if (baseFloor > U64_MAX) return null;
+  const k = rc * tc;
+
+  const toCurve0 = avail - baseFloor;
+  if (toCurve0 === 0n) return null;
+  const rcA = rc + toCurve0;
+  const tcA = ceilDiv(k, rcA);
+  if (tcA > tc) return null;
+  const out0 = tc - tcA;
+
+  const required = s > 0n ? ceilDiv(rf * out0, s) : 0n;
+  if (required > U64_MAX) return null;
+  let toFloor = baseFloor > required ? baseFloor : required;
+  if (toFloor > avail) toFloor = avail;
+  const toCurve = avail - toFloor;
+
+  if (toCurve === 0n) {
+    if (s === 0n || rf === 0n) return null;
+    const out = (avail * s) / rf;
+    if (out > U64_MAX) return null;
+    if (out === 0n || out >= tc) return null;
+    return { creatorFee, toFloor: avail, toCurve: 0n, tokensOut: out, newCurveSol: rc };
+  }
+
+  const rc2 = rc + toCurve;
+  const tc2 = ceilDiv(k, rc2);
+  if (tc2 >= tc) return null;
+  const out = tc - tc2;
+  if (out === 0n) return null;
+  return { creatorFee, toFloor, toCurve, tokensOut: out, newCurveSol: rc2 };
 }
 
-/** Same as the program's quote_sell. Returns null where the program would refuse. */
-export function quoteSell(
-  tokensIn: bigint,
-  reserve: bigint,
-  supply: bigint,
-  sellFee: number,
-  teamFee: number,
-): SellQuote | null {
-  if (supply === 0n || tokensIn >= supply) return null;
-  const kept = BigInt(sellFee) + BigInt(teamFee);
-  if (kept >= BPS) return null;
-  const gross = (tokensIn * reserve) / supply;
-  const team = (gross * BigInt(teamFee)) / BPS;
-  const userOut = (gross * (BPS - kept)) / BPS;
-  return { gross, teamFee: team, userOut, holderFee: gross - userOut - team };
+/** Same as the program's quote_sell. Returns null exactly where the program would refuse. */
+export function quoteSell(tok: bigint, rc: bigint, tc: bigint, rf: bigint, s: bigint): SellQuote | null {
+  if (s === 0n || tok === 0n || tok >= s) return null;
+  const floorOut = (rf * tok) / s;
+  if (floorOut > U64_MAX) return null;
+  const k = rc * tc;
+  const tcNew = tc + tok;
+  const rc2Curve = ceilDiv(k, tcNew);
+  const curveOut = rc > rc2Curve ? rc - rc2Curve : 0n;
+
+  let fromFloor: boolean, gross: bigint, newCurveSol: bigint, newFloorReserve: bigint;
+  if (curveOut >= floorOut) {
+    fromFloor = false;
+    gross = curveOut;
+    newCurveSol = rc2Curve;
+    newFloorReserve = rf;
+  } else {
+    fromFloor = true;
+    gross = floorOut;
+    newCurveSol = rc;
+    newFloorReserve = rf - floorOut;
+  }
+  const creatorFee = (gross * CREATOR_FEE_BPS) / BPS;
+  const userOut = gross - creatorFee;
+  return { fromFloor, gross, creatorFee, userOut, newCurveSol, newFloorReserve };
+}
+
+/** True if new_rf/new_s >= old_rf/old_s — the floor did not fall. */
+export function floorNotLower(oldRf: bigint, oldS: bigint, newRf: bigint, newS: bigint): boolean {
+  if (newS === 0n) return true;
+  return newRf * oldS >= oldRf * newS;
 }
 
 export function quoteBuyMarket(m: Market, supply: bigint, solIn: bigint) {
-  return quoteBuy(solIn, m.reserve, supply, m.buyFeeBps, m.teamFeeBps);
+  return quoteBuy(solIn, m.curveSol, m.totalSupply - supply, m.floorReserve, supply);
 }
-
 export function quoteSellMarket(m: Market, supply: bigint, tokensIn: bigint) {
-  return quoteSell(tokensIn, m.reserve, supply, m.sellFeeBps, m.teamFeeBps);
+  return quoteSell(tokensIn, m.curveSol, m.totalSupply - supply, m.floorReserve, supply);
 }
 
-/** SOL per whole token, as a float for display. */
-export function priceSolPerToken(reserve: bigint, supply: bigint): number {
-  return Number(reserve) / 1e9 / (Number(supply) / 10 ** DECIMALS);
+/** Curve price, SOL per whole token, as a float for display. */
+export function curvePrice(curveSol: bigint, tc: bigint): number {
+  return Number(curveSol) / 1e9 / (Number(tc) / 10 ** DECIMALS);
+}
+/** Floor price (always redeemable), SOL per whole token. */
+export function floorPrice(floorReserve: bigint, supply: bigint): number {
+  if (supply === 0n) return 0;
+  return Number(floorReserve) / 1e9 / (Number(supply) / 10 ** DECIMALS);
 }
