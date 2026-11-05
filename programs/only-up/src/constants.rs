@@ -18,9 +18,9 @@ pub const BPS: u128 = 10_000;
 pub const CREATOR_FEE_BPS: u128 = 100;
 
 /// Share of each buy (after the creator fee) routed into the floor reserve, in
-/// basis points. Fixed at 25% — the "dial" that trades curve upside for a
+/// basis points. Fixed at 40% — the "dial" that trades curve upside for a
 /// stronger, faster-rising floor.
-pub const FLOOR_BPS: u128 = 2_500;
+pub const FLOOR_BPS: u128 = 4_000;
 
 // ---- launch bounds, fixed in code ----
 

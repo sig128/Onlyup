@@ -89,7 +89,7 @@
     <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 10px">
       <span class="display" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--green); border: 3px solid var(--ink); border-radius: 50%">↑</span>
       <h3 class="display" style="margin: 0; font-size: 24px">You buy</h3>
-      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Your SOL buys tokens on a real curve, so the price climbs as people ape in. 1% goes to the creator; <strong>25% of the rest is locked into the floor reserve</strong>, forever. The remainder drives the price.</p>
+      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Your SOL buys tokens on a real curve, so the price climbs as people ape in. 1% goes to the creator; <strong>40% of the rest is locked into the floor reserve</strong>, forever. The remainder drives the price.</p>
     </div>
     <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 10px">
       <span class="display" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--yellow); border: 3px solid var(--ink); border-radius: 50%">↕</span>
@@ -105,9 +105,9 @@
   <div class="card" style="padding: 22px 26px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between">
     <span class="display" style="font-size: 22px">Every buy splits:</span>
     <div role="img" aria-label="Of each buy, 1 percent to the creator, 25 percent to the floor, the rest to the curve" style="flex: 1 1 320px; min-width: 0; display: flex; height: 54px; border: 3px solid var(--ink); border-radius: 16px; overflow: hidden">
-      <div class="display" style="flex: 74 1 0; background: var(--green); display: flex; align-items: center; padding: 0 16px; min-width: 0; font-size: 16px">74% → the curve (price)</div>
-      <div class="display" style="flex: 25 1 0; background: var(--yellow); border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 14px; text-align: center; padding: 0 6px">25% → floor</div>
-      <div class="display" style="flex: 8 1 0; background: var(--ink); color: #fff; border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 11px; text-align: center; padding: 0 4px">1% dev</div>
+      <div class="display" style="flex: 59 1 0; background: var(--green); display: flex; align-items: center; padding: 0 16px; min-width: 0; font-size: 16px">59% → the curve (price)</div>
+      <div class="display" style="flex: 40 1 0; background: var(--yellow); border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 14px; text-align: center; padding: 0 6px">40% → floor</div>
+      <div class="display" style="flex: 3 1 0; background: var(--ink); color: #fff; border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 11px; text-align: center; padding: 0 4px">1% dev</div>
     </div>
   </div>
 </section>
@@ -211,7 +211,7 @@
       <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 9px; font-size: 16px; font-weight: 700; line-height: 1.4">
         <li>Take SOL out of the reserves (the only payout is to sellers).</li>
         <li>Mint tokens for free — new tokens only come from a paid buy.</li>
-        <li>Change the split after launch. 1% creator, 25% floor — fixed in the code.</li>
+        <li>Change the split after launch. 1% creator, 40% floor — fixed in the code.</li>
         <li>Freeze your wallet or block your sell. There's no freeze authority.</li>
         <li><strong>Lower the floor</strong> — every trade re-checks it can only rise.</li>
       </ul>
@@ -243,7 +243,7 @@
 <section class="wrap" style="padding-top: 20px; padding-bottom: 20px">
   <div class="card" style="background: var(--yellow); box-shadow: 10px 10px 0 var(--ink); padding: 30px; display: flex; flex-direction: column; gap: 12px">
     <h2 class="display" style="margin: 0; font-size: clamp(26px, 3.4vw, 40px)">The honest trade-off</h2>
-    <p style="margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; max-width: 820px">ONLY UP can pump like any memecoin — there's real upside. The difference is the floor underneath, which can't fall. The cost of that floor: <strong>25% of every buy goes to the floor instead of straight into the price</strong>, so the curve climbs a little slower than a pure pump would. You're trading a bit of top-end speed for a bottom that can't drop out. The simulator shows real scenarios, not a promise — so you can decide if that trade is for you.</p>
+    <p style="margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; max-width: 820px">ONLY UP can pump like any memecoin — there's real upside. The difference is the floor underneath, which can't fall. The cost of that floor: <strong>40% of every buy goes to the floor instead of straight into the price</strong>, so the curve climbs a little slower than a pure pump would. You're trading a bit of top-end speed for a bottom that can't drop out. The simulator shows real scenarios, not a promise — so you can decide if that trade is for you.</p>
   </div>
 </section>
 
@@ -280,7 +280,7 @@
 (function () {
   "use strict";
   // ---- the contract's v2 curve-and-floor math (floats; illustrative) ----
-  var PHI = 0.25, CREATOR = 0.01, TOTAL = 1e9;
+  var PHI = 0.40, CREATOR = 0.01, TOTAL = 1e9;
   function mkt(seedSol) { return { rc: seedSol, rf: 0, s: 0 }; }
   function tc(m) { return TOTAL - m.s; }
   function price(m) { return m.rc / tc(m); }

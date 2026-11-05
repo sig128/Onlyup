@@ -14,7 +14,7 @@ export const PROGRAM_ID = new PublicKey("3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQp
 export const DECIMALS = 6;
 export const BPS = 10_000n;
 export const CREATOR_FEE_BPS = 100n; // 1%, fixed in the program
-export const FLOOR_BPS = 2_500n; // 25%, fixed in the program
+export const FLOOR_BPS = 4_000n; // 40%, fixed in the program
 const U64_MAX = (1n << 64n) - 1n;
 
 // ---------- addresses ----------
