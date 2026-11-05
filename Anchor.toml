@@ -1,0 +1,19 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+only_up = "3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS"
+
+[programs.devnet]
+only_up = "3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS"
+
+[programs.mainnet]
+only_up = "3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"

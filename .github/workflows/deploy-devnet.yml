@@ -1,0 +1,33 @@
+name: deploy-devnet
+
+# Manual only. Needs two repository secrets:
+#   DEPLOYER_KEYPAIR  - JSON array of a funded devnet wallet
+#   PROGRAM_KEYPAIR   - contents of keys/only_up-program-keypair.json
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: cargo build-sbf --manifest-path programs/only-up/Cargo.toml --sbf-out-dir target/deploy
+      - name: Deploy to devnet
+        env:
+          DEPLOYER_KEYPAIR: ${{ secrets.DEPLOYER_KEYPAIR }}
+          PROGRAM_KEYPAIR: ${{ secrets.PROGRAM_KEYPAIR }}
+        run: |
+          umask 077
+          echo "$DEPLOYER_KEYPAIR" > /tmp/deployer.json
+          echo "$PROGRAM_KEYPAIR" > /tmp/program.json
+          solana program deploy target/deploy/only_up.so \
+            --url devnet \
+            --keypair /tmp/deployer.json \
+            --program-id /tmp/program.json
+          rm -f /tmp/deployer.json /tmp/program.json

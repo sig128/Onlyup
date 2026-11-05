@@ -1,0 +1,41 @@
+name: build-and-test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Math and full-transaction tests
+        run: cargo test -p only-up
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Client matches the program
+        working-directory: scripts
+        run: |
+          npm ci
+          npx tsc -p tsconfig.json
+          npx tsx check-layout.ts
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Build the on-chain program
+        run: cargo build-sbf --manifest-path programs/only-up/Cargo.toml --sbf-out-dir target/deploy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: only_up-program
+          path: target/deploy/only_up.so

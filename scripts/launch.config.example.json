@@ -1,0 +1,18 @@
+{
+  "rpcUrl": "https://api.devnet.solana.com",
+  "keypairPath": "~/.config/solana/id.json",
+  "name": "ONLY UP",
+  "symbol": "UP",
+  "metadataUri": "https://example.com/only-up.json",
+  "metadataMutable": false,
+  "seedSol": 0.1,
+  "startPriceSol": 0.000001,
+  "buyFeeBps": 150,
+  "sellFeeBps": 150,
+  "teamFeeBps": 50,
+  "maxHypeBps": 2000,
+  "hypeFullBps": 2000,
+  "hypeHalfLifeSecs": 3600,
+  "dripSecs": 60,
+  "launchBuySol": 0
+}
