@@ -39,7 +39,7 @@ jobs:
       - name: Create the Meteora mirror pool
         working-directory: scripts
         env:
-          RPC: ${{ github.event.inputs.rpc }}
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
           POOL_SOL: ${{ github.event.inputs.poolSol }}
           POOL_FEE_BPS: ${{ github.event.inputs.poolFeeBps }}
         run: |

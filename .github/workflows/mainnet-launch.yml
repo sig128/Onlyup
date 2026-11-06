@@ -49,7 +49,7 @@ jobs:
       - name: Launch the token
         working-directory: scripts
         env:
-          RPC: ${{ github.event.inputs.rpc }}
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
           SEED_SOL: ${{ github.event.inputs.seedSol }}
           SEED_TOKENS: ${{ github.event.inputs.seedTokens }}
           LAUNCH_BUY: ${{ github.event.inputs.launchBuySol }}

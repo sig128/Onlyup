@@ -34,7 +34,7 @@ jobs:
         env:
           MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
           PROGRAM_KEYPAIR: ${{ secrets.PROGRAM_KEYPAIR }}
-          RPC: ${{ github.event.inputs.rpc }}
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
           PRIO: ${{ github.event.inputs.priorityMicrolamports }}
         run: |
           umask 077
