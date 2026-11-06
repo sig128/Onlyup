@@ -1,0 +1,47 @@
+name: devnet-pool
+
+# Creates ONLY the Meteora mirror pool on devnet, against the already-launched UP
+# mint. Run this after deploy-devnet + devnet-launch (the token already exists, so
+# re-running the full launch would fail on the duplicate mint). Needs one secret:
+#   DEPLOYER_KEYPAIR - the funded devnet wallet that launched the token (JSON array)
+on:
+  workflow_dispatch:
+
+jobs:
+  pool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write deployer keypair from secret
+        env:
+          DEPLOYER_KEYPAIR: ${{ secrets.DEPLOYER_KEYPAIR }}
+        run: |
+          umask 077
+          printf '%s' "$DEPLOYER_KEYPAIR" > /tmp/deployer.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Create the Meteora mirror pool
+        working-directory: scripts
+        run: |
+          cat > pool.config.json <<'JSON'
+          {
+            "rpcUrl": "https://api.devnet.solana.com",
+            "keypairPath": "/tmp/deployer.json",
+            "mint": "95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup",
+            "poolSol": 0.3,
+            "poolFeeBps": 100
+          }
+          JSON
+          npx tsx pool.ts pool.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devnet-pool-output
+          path: scripts/pool-output.json

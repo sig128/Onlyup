@@ -70,35 +70,15 @@ function resolveMint(): PublicKey {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(kp, "utf8")))).publicKey;
 }
 const up = resolveMint();
-const poolLamports = BigInt(Math.round(cfg.poolSol * LAMPORTS_PER_SOL));
 const poolFeeBps = cfg.poolFeeBps ?? 100;
 
-async function ensureUpBalance(need: bigint) {
+async function heldUp(): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(up, deployer.publicKey);
-  let held = 0n;
   try {
-    held = BigInt((await connection.getTokenAccountBalance(ata)).value.amount);
+    return BigInt((await connection.getTokenAccountBalance(ata)).value.amount);
   } catch {
-    /* no ATA yet */
+    return 0n; // no ATA yet
   }
-  if (held >= need) return;
-  // Buy the shortfall from the contract. Over-buy slightly (2%) to cover rounding/price drift.
-  const m = await lib.fetchMarket(connection, up);
-  const supply = BigInt((await connection.getTokenSupply(up)).value.amount);
-  const shortfall = need - held;
-  const price = lib.curvePrice(m.curveSol, m.totalSupply - supply); // SOL per UP
-  const solGuess = BigInt(Math.ceil((Number(shortfall) / 10 ** lib.DECIMALS) * price * 1.05 * LAMPORTS_PER_SOL));
-  const q = lib.quoteBuyMarket(m, supply, solGuess);
-  if (!q || q.tokensOut < shortfall) throw new Error("could not buy enough UP to seed the pool — raise poolSol headroom");
-  console.log(`Buying ${Number(q.tokensOut) / 10 ** lib.DECIMALS} UP from the contract to seed the pool`);
-  await sendAndConfirmTransaction(
-    connection,
-    new Transaction().add(
-      createAssociatedTokenAccountIdempotentInstruction(deployer.publicKey, ata, deployer.publicKey, up),
-      lib.buyIx(deployer.publicKey, up, ata, solGuess, (q.tokensOut * 98n) / 100n),
-    ),
-    [deployer],
-  );
 }
 
 async function wrapSol(lamports: bigint) {
@@ -122,14 +102,28 @@ async function main() {
   const supply = BigInt((await connection.getTokenSupply(up)).value.amount);
   const priceSolPerUp = lib.curvePrice(m.curveSol, m.totalSupply - supply);
   if (!(priceSolPerUp > 0)) throw new Error("contract price is zero — launch the token first");
-  const upWhole = cfg.poolSol / priceSolPerUp; // UP needed to match poolSol at the contract price
-  const upBase = BigInt(Math.round(upWhole * 10 ** lib.DECIMALS));
+  // Seed the pool from the UP the deployer already holds (bought at launch), with
+  // the SOL side matched to it at the contract price and capped by poolSol — so we
+  // never try to mirror more of the market than the curve actually backs. The arb
+  // bot deepens the peg afterwards; the pool only needs to open at the right price.
+  const held = await heldUp();
+  if (held === 0n) throw new Error("deployer holds no UP — raise launchBuySol so the launch buy funds the pool");
+  const heldWhole = Number(held) / 10 ** lib.DECIMALS;
+  const solFromHeld = heldWhole * priceSolPerUp;
+  const poolSolActual = Math.min(cfg.poolSol, solFromHeld);
+  const poolLamportsActual = BigInt(Math.round(poolSolActual * LAMPORTS_PER_SOL));
+  const upWhole = poolSolActual / priceSolPerUp;
+  let upBase = BigInt(Math.round(upWhole * 10 ** lib.DECIMALS));
+  if (upBase > held) upBase = held; // never deposit more than we hold
   console.log(`Contract price: ${priceSolPerUp.toExponential(6)} SOL/UP`);
-  console.log(`Seeding pool with ${cfg.poolSol} SOL + ~${upWhole.toLocaleString()} UP`);
+  console.log(`Deployer holds ${heldWhole.toLocaleString()} UP (~${solFromHeld.toFixed(4)} SOL of value)`);
+  console.log(`Seeding pool with ${poolSolActual.toFixed(4)} SOL + ~${upWhole.toLocaleString()} UP`);
+  if (poolSolActual < cfg.poolSol - 1e-9) {
+    console.log(`(capped from ${cfg.poolSol} SOL — the launch buy backs only ${poolSolActual.toFixed(4)} SOL of mirror liquidity; raise launchBuySol for a deeper pool)`);
+  }
 
-  // 2 + 3. Make sure we hold the UP, and wrap the SOL.
-  await ensureUpBalance(upBase);
-  await wrapSol(poolLamports);
+  // Wrap the SOL side.
+  await wrapSol(poolLamportsActual);
 
   // 4. Build the pool. DAMM v2 sorts the two mints; assign A/B + price accordingly.
   const upFirst = Buffer.compare(up.toBuffer(), NATIVE_MINT.toBuffer()) < 0;
@@ -137,8 +131,8 @@ async function main() {
   const tokenBMint = upFirst ? NATIVE_MINT : up;
   const tokenADec = upFirst ? lib.DECIMALS : 9;
   const tokenBDec = upFirst ? 9 : lib.DECIMALS;
-  const tokenAAmount = new BN((upFirst ? upBase : poolLamports).toString());
-  const tokenBAmount = new BN((upFirst ? poolLamports : upBase).toString());
+  const tokenAAmount = new BN((upFirst ? upBase : poolLamportsActual).toString());
+  const tokenBAmount = new BN((upFirst ? poolLamportsActual : upBase).toString());
   // price is always tokenB-per-tokenA. UP=A → SOL/UP; SOL=A → UP/SOL.
   const priceStr = (upFirst ? priceSolPerUp : 1 / priceSolPerUp).toFixed(18);
   const initSqrtPrice = getSqrtPriceFromPrice(priceStr, tokenADec, tokenBDec);
@@ -190,7 +184,7 @@ async function main() {
     pool: pool.toBase58(),
     position: position.toBase58(),
     positionNft: positionNft.publicKey.toBase58(),
-    poolSol: cfg.poolSol,
+    poolSol: poolSolActual,
     seededUp: upWhole,
     priceSolPerUp,
     poolFeeBps,
