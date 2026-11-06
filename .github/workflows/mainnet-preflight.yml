@@ -1,0 +1,72 @@
+name: mainnet-preflight
+
+# Read-only sanity check before any real SOL moves. Spends nothing, sends no
+# transactions. Verifies the secrets are set and decode to the expected
+# addresses, the RPC works, and the deployer is funded.
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (used only if the MAINNET_RPC secret is unset)"
+        default: "https://api.mainnet-beta.solana.com"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Check secrets, addresses, RPC, and balance (read-only)
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+          PROGRAM_KEYPAIR: ${{ secrets.PROGRAM_KEYPAIR }}
+          MINT_KEYPAIR: ${{ secrets.MINT_KEYPAIR }}
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
+          RPC_SECRET: ${{ secrets.MAINNET_RPC }}
+        run: |
+          set +e
+          umask 077
+          ok=1
+
+          echo "===== 1. Secret presence ====="
+          [ -n "$MAINNET_DEPLOYER_KEYPAIR" ] && echo "OK  MAINNET_DEPLOYER_KEYPAIR is set" || { echo "MISSING  MAINNET_DEPLOYER_KEYPAIR"; ok=0; }
+          [ -n "$PROGRAM_KEYPAIR" ] && echo "OK  PROGRAM_KEYPAIR is set" || { echo "MISSING  PROGRAM_KEYPAIR"; ok=0; }
+          [ -n "$MINT_KEYPAIR" ] && echo "OK  MINT_KEYPAIR is set" || { echo "MISSING  MINT_KEYPAIR"; ok=0; }
+          [ -n "$RPC_SECRET" ] && echo "OK  MAINNET_RPC secret is set" || echo "NOTE  MAINNET_RPC secret not set -> using public RPC fallback"
+
+          echo ""
+          echo "===== 2. Keypairs decode to the right addresses ====="
+          printf '%s' "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/d.json
+          printf '%s' "$PROGRAM_KEYPAIR" > /tmp/p.json
+          printf '%s' "$MINT_KEYPAIR" > /tmp/m.json
+          DEP=$(solana address -k /tmp/d.json 2>/dev/null || echo INVALID)
+          PRG=$(solana address -k /tmp/p.json 2>/dev/null || echo INVALID)
+          MNT=$(solana address -k /tmp/m.json 2>/dev/null || echo INVALID)
+          echo "Deployer: $DEP"
+          [ "$DEP" = "CsJ8oiDAKQQeYBMBewtLR3oJYbm8BmSS2KB9JZaFFooX" ] && echo "   -> matches expected deployer" || { echo "   -> DOES NOT match CsJ8oiDAKQQeYBMBewtLR3oJYbm8BmSS2KB9JZaFFooX"; ok=0; }
+          echo "Program:  $PRG"
+          [ "$PRG" = "3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS" ] && echo "   -> matches expected program id" || echo "   -> NOTE: differs from devnet program id 3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS"
+          echo "Mint:     $MNT"
+          [ "$MNT" = "95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup" ] && echo "   -> matches vanity CA" || { echo "   -> DOES NOT match vanity 95QG...up"; ok=0; }
+
+          echo ""
+          echo "===== 3. RPC reachability ====="
+          CV=$(solana cluster-version --url "$RPC" 2>&1)
+          if [ $? -eq 0 ]; then echo "OK  RPC responds (cluster version: $CV)"; else echo "FAIL  RPC error: $CV"; ok=0; fi
+
+          echo ""
+          echo "===== 4. Deployer balance ====="
+          BAL=$(solana balance /tmp/d.json --url "$RPC" 2>&1)
+          echo "Balance: $BAL"
+          BN=$(printf '%s' "$BAL" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+          if [ -n "$BN" ]; then
+            awk -v b="$BN" 'BEGIN{ if (b+0 >= 7.5) print "OK  >= 7.5 SOL, enough for the full launch"; else if (b+0 >= 6) print "OK-ish  >= 6 SOL, enough for a lean launch (thin pool)"; else print "LOW  under 6 SOL - top up before launch" }'
+          else
+            echo "Could not read a numeric balance."; ok=0
+          fi
+
+          rm -f /tmp/d.json /tmp/p.json /tmp/m.json
+          echo ""
+          [ "$ok" = "1" ] && echo "RESULT: PREFLIGHT_OK" || { echo "RESULT: PREFLIGHT_HAS_ISSUES"; exit 1; }
