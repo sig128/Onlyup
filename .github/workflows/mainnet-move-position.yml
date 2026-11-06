@@ -1,0 +1,51 @@
+name: mainnet-move-position
+
+# Transfers the LP position NFT (Token-2022) from the deployer to the destination
+# wallet, then drains the deployer's remaining SOL. MANUAL ONLY — moves a real
+# asset. Signs with the deployer.
+#   MAINNET_DEPLOYER_KEYPAIR - the funded mainnet deployer (JSON array)
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (used only if MAINNET_RPC secret is unset)"
+        default: "https://api.mainnet-beta.solana.com"
+      dest:
+        description: "Destination wallet for the position NFT + remaining SOL"
+        default: "7Ada8QoNUe6tqCK3L4A7WyNAhUDCvKwfEb4qfx45wnXS"
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write deployer keypair from secret
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+        run: |
+          umask 077
+          printf '%s' "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/deployer.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Move position NFT
+        working-directory: scripts
+        env:
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
+          DEST: ${{ github.event.inputs.dest }}
+        run: |
+          cat > move-position.config.json <<JSON
+          {
+            "rpcUrl": "$RPC",
+            "keypairPath": "/tmp/deployer.json",
+            "nftMint": "DtZLc7gRwyWTRipn5Q3EHMz7NhNWDRK8HjU8ogbGS2xe",
+            "dest": "$DEST"
+          }
+          JSON
+          npx tsx move-position.ts move-position.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json
