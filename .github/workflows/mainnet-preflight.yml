@@ -63,6 +63,8 @@ jobs:
           BN=$(printf '%s' "$BAL" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
           if [ -n "$BN" ]; then
             awk -v b="$BN" 'BEGIN{ if (b+0 >= 7.5) print "OK  >= 7.5 SOL, enough for the full launch"; else if (b+0 >= 6) print "OK-ish  >= 6 SOL, enough for a lean launch (thin pool)"; else print "LOW  under 6 SOL - top up before launch" }'
+            ENOUGH=$(awk -v b="$BN" 'BEGIN{ print (b+0 >= 6) ? 1 : 0 }')
+            [ "$ENOUGH" = "1" ] || ok=0
           else
             echo "Could not read a numeric balance."; ok=0
           fi
