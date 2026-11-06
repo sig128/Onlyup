@@ -28,5 +28,5 @@ jobs:
           npx tsx balances.ts "$RPC" \
             95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup \
             CsJ8oiDAKQQeYBMBewtLR3oJYbm8BmSS2KB9JZaFFooX \
-            58VHcHT2hwKsd7iwB2Z6FvBayWgDmEBcm1wbTaRLm5f5 \
+            7Ada8QoNUe6tqCK3L4A7WyNAhUDCvKwfEb4qfx45wnXS \
             HqLYyDU1e3ELNvAckX4TkDXxmQ32Mi2WLuNfP6h8LaBE
