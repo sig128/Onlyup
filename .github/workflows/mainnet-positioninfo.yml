@@ -1,0 +1,30 @@
+name: mainnet-positioninfo
+
+# Read-only. Locates the LP position NFT (token program + holder account/wallet)
+# so the transfer can be built against the real holder. Spends nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (used only if MAINNET_RPC secret is unset)"
+        default: "https://api.mainnet-beta.solana.com"
+
+jobs:
+  info:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Position NFT info
+        working-directory: scripts
+        env:
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
+        run: |
+          npx tsx position-info.ts "$RPC" \
+            DtZLc7gRwyWTRipn5Q3EHMz7NhNWDRK8HjU8ogbGS2xe \
+            CsJ8oiDAKQQeYBMBewtLR3oJYbm8BmSS2KB9JZaFFooX
