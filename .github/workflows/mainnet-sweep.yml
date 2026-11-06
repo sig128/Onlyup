@@ -1,0 +1,56 @@
+name: mainnet-sweep
+
+# Sweeps the deployer's assets to a destination wallet and repoints the creator-
+# fee treasury there. MANUAL ONLY — moves real assets. Signs with the deployer.
+#   MAINNET_DEPLOYER_KEYPAIR - the funded mainnet deployer (JSON array)
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (used only if MAINNET_RPC secret is unset)"
+        default: "https://api.mainnet-beta.solana.com"
+      dest:
+        description: "Destination wallet for everything"
+        default: "7Ada8QoNUe6tqCK3L4A7WyNAhUDCvKwfEb4qfx45wnXS"
+      setTreasury:
+        description: "Also repoint the creator-fee treasury to dest (true/false)"
+        default: "true"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write deployer keypair from secret
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+        run: |
+          umask 077
+          printf '%s' "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/deployer.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Sweep
+        working-directory: scripts
+        env:
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
+          DEST: ${{ github.event.inputs.dest }}
+          SET_TREASURY: ${{ github.event.inputs.setTreasury }}
+        run: |
+          cat > sweep.config.json <<JSON
+          {
+            "rpcUrl": "$RPC",
+            "keypairPath": "/tmp/deployer.json",
+            "mint": "95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup",
+            "dest": "$DEST",
+            "setTreasury": $SET_TREASURY,
+            "positionNftMint": "DtZLc7gRwyWTRipn5Q3EHMz7NhNWDRK8HjU8ogbGS2xe"
+          }
+          JSON
+          npx tsx sweep.ts sweep.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json
