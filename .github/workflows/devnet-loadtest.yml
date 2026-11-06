@@ -1,0 +1,51 @@
+name: devnet-loadtest
+
+# Live devnet load test: funds a swarm of wallets and fires hundreds of real buys
+# and sells at the deployed ONLY UP program, asserting on-chain AFTER EVERY TRADE
+# that the floor never dropped and the vault stayed solvent. The dry run before
+# mainnet. Needs one repository secret:
+#   DEPLOYER_KEYPAIR - the funded devnet wallet (acts as the bank), JSON array
+on:
+  workflow_dispatch:
+    inputs:
+      trades:
+        description: "Number of trades to fire"
+        default: "500"
+      traders:
+        description: "Number of trader wallets"
+        default: "12"
+      fund:
+        description: "SOL funded to each trader wallet"
+        default: "0.3"
+
+jobs:
+  loadtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write deployer keypair from secret
+        env:
+          DEPLOYER_KEYPAIR: ${{ secrets.DEPLOYER_KEYPAIR }}
+        run: |
+          umask 077
+          printf '%s' "$DEPLOYER_KEYPAIR" > /tmp/deployer.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Load test — real buys + sells, assert floor only up + solvent
+        working-directory: scripts
+        run: |
+          npx tsx simulate-devnet.ts \
+            https://api.devnet.solana.com \
+            /tmp/deployer.json \
+            95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup \
+            "${{ github.event.inputs.trades }}" \
+            "${{ github.event.inputs.traders }}" \
+            "${{ github.event.inputs.fund }}"
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json
