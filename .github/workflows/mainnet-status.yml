@@ -1,0 +1,27 @@
+name: mainnet-status
+
+# Read-only. Prints the live ONLY UP market state on mainnet (supply, reserves,
+# prices, trades). Spends nothing, sends no transactions.
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (used only if MAINNET_RPC secret is unset)"
+        default: "https://api.mainnet-beta.solana.com"
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Market status
+        working-directory: scripts
+        env:
+          RPC: ${{ secrets.MAINNET_RPC || github.event.inputs.rpc }}
+        run: npx tsx status.ts "$RPC" 95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup
