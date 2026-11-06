@@ -1,0 +1,77 @@
+name: devnet-launch
+
+# Launches the ONLY UP token + Meteora mirror pool on devnet, from the GitHub UI.
+# Run deploy-devnet first (it deploys the program). Needs two repository secrets:
+#   DEPLOYER_KEYPAIR - a funded devnet wallet (JSON array)
+#   MINT_KEYPAIR     - contents of keys/v2-mint-keypair.json (the vanity "...up" mint)
+on:
+  workflow_dispatch:
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the Solana CLI (for the airdrop)
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Write keypairs from secrets
+        env:
+          DEPLOYER_KEYPAIR: ${{ secrets.DEPLOYER_KEYPAIR }}
+          MINT_KEYPAIR: ${{ secrets.MINT_KEYPAIR }}
+        run: |
+          umask 077
+          mkdir -p keys
+          printf '%s' "$DEPLOYER_KEYPAIR" > /tmp/deployer.json
+          printf '%s' "$MINT_KEYPAIR" > keys/v2-mint-keypair.json
+      - name: Top up devnet SOL (best effort — fund via faucet.solana.com if rate-limited)
+        run: |
+          solana airdrop 2 --url devnet --keypair /tmp/deployer.json || true
+          solana balance --url devnet --keypair /tmp/deployer.json || true
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Launch the token
+        working-directory: scripts
+        run: |
+          cat > launch.config.json <<'JSON'
+          {
+            "rpcUrl": "https://api.devnet.solana.com",
+            "keypairPath": "/tmp/deployer.json",
+            "mintKeypairPath": "../keys/v2-mint-keypair.json",
+            "name": "Only Up",
+            "symbol": "UP",
+            "metadataUri": "https://www.onlyup.finance/token.json",
+            "metadataMutable": true,
+            "seedSol": 0.5,
+            "seedTokens": 500000000,
+            "launchBuySol": 0.2
+          }
+          JSON
+          npx tsx deploy.ts launch.config.json
+      - name: Create the Meteora mirror pool
+        working-directory: scripts
+        run: |
+          cat > pool.config.json <<'JSON'
+          {
+            "rpcUrl": "https://api.devnet.solana.com",
+            "keypairPath": "/tmp/deployer.json",
+            "poolSol": 0.3,
+            "poolFeeBps": 100
+          }
+          JSON
+          npx tsx pool.ts pool.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json keys/v2-mint-keypair.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devnet-launch-output
+          path: |
+            scripts/launch-output.json
+            scripts/pool-output.json
