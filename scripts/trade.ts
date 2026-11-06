@@ -33,8 +33,8 @@ if (side === "buy") {
   const q = lib.quoteBuyMarket(m, supply, solIn);
   if (!q || q.tokensOut === 0n) throw new Error("amount too small");
   console.log(
-    `Buying about ${Number(q.tokensOut) / 10 ** lib.DECIMALS} tokens ` +
-      `(fee ${m.buyFeeBps / 100}% + creator ${m.teamFeeBps / 100}%)`,
+    `Buying ~${Number(q.tokensOut) / 10 ** lib.DECIMALS} UP ` +
+      `(1% creator fee; ${Number(lib.FLOOR_BPS) / 100}% of the rest funds the floor you can always redeem)`,
   );
   tx.add(
     createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, ata, wallet.publicKey, mint),
@@ -46,7 +46,10 @@ if (side === "buy") {
   if (tokensIn > held) throw new Error(`you only hold ${Number(held) / 10 ** lib.DECIMALS} tokens`);
   const q = lib.quoteSellMarket(m, supply, tokensIn);
   if (!q || q.userOut === 0n) throw new Error("amount too small");
-  console.log(`Selling for about ${Number(q.userOut) / LAMPORTS_PER_SOL} SOL`);
+  console.log(
+    `Selling for ~${Number(q.userOut) / LAMPORTS_PER_SOL} SOL ` +
+      `(paid from the ${q.fromFloor ? "floor" : "curve"}, 1% creator fee)`,
+  );
   tx.add(lib.sellIx(wallet.publicKey, mint, ata, tokensIn, withSlippage(q.userOut)));
 } else {
   throw new Error("side must be buy or sell");

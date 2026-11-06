@@ -1,14 +1,12 @@
 {
   "rpcUrl": "https://api.devnet.solana.com",
   "keypairPath": "~/.config/solana/id.json",
-  "name": "ONLY UP",
+  "mintKeypairPath": "../keys/v2-mint-keypair.json",
+  "name": "Only Up",
   "symbol": "UP",
-  "metadataUri": "https://example.com/only-up.json",
+  "metadataUri": "https://www.onlyup.finance/token.json",
   "metadataMutable": false,
-  "seedSol": 0.1,
-  "startPriceSol": 0.000001,
-  "buyFeeBps": 250,
-  "sellFeeBps": 250,
-  "teamFeeBps": 50,
+  "seedSol": 0.5,
+  "seedTokens": 500000000,
   "launchBuySol": 0
 }
