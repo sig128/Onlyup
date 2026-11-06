@@ -21,7 +21,10 @@ on:
         default: "500000000"
       launchBuySol:
         description: "Your opening buy in SOL. This UP becomes the Meteora pool's inventory — bigger buy = deeper pool."
-        default: "0.5"
+        default: "1"
+      treasury:
+        description: "YOUR wallet that receives the 0.5% creator fee (must be a wallet you control — NOT the throwaway deployer)"
+        default: "58VHcHT2hwKsd7iwB2Z6FvBayWgDmEBcm1wbTaRLm5f5"
 
 jobs:
   launch:
@@ -50,6 +53,7 @@ jobs:
           SEED_SOL: ${{ github.event.inputs.seedSol }}
           SEED_TOKENS: ${{ github.event.inputs.seedTokens }}
           LAUNCH_BUY: ${{ github.event.inputs.launchBuySol }}
+          TREASURY: ${{ github.event.inputs.treasury }}
         run: |
           cat > launch.config.json <<JSON
           {
@@ -60,6 +64,7 @@ jobs:
             "symbol": "UP",
             "metadataUri": "https://www.onlyup.finance/token.json",
             "metadataMutable": true,
+            "treasury": "$TREASURY",
             "seedSol": $SEED_SOL,
             "seedTokens": $SEED_TOKENS,
             "launchBuySol": $LAUNCH_BUY

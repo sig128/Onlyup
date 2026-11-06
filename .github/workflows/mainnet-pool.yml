@@ -14,7 +14,7 @@ on:
         default: "https://api.mainnet-beta.solana.com"
       poolSol:
         description: "Target SOL on the pool's SOL side (capped by what your launch buy backs)"
-        default: "0.3"
+        default: "1"
       poolFeeBps:
         description: "Pool swap fee in basis points (LP revenue). 100 = 1%"
         default: "100"
