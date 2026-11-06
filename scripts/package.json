@@ -11,8 +11,10 @@
     "@metaplex-foundation/umi": "^1.2.0",
     "@metaplex-foundation/umi-bundle-defaults": "^1.2.0",
     "@metaplex-foundation/umi-web3js-adapters": "^1.2.0",
+    "@meteora-ag/cp-amm-sdk": "^1.5.1",
     "@solana/spl-token": "^0.4.13",
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
