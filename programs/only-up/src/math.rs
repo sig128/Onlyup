@@ -209,7 +209,7 @@ mod tests {
     /// the floor never falls, both reserves stay solvent, and payouts are covered.
     #[test]
     fn floor_is_monotonic_and_always_solvent() {
-        for seed in 1..=1500u64 {
+        for seed in 1..=2000u64 {
             let mut rng = Rng::new(seed.wrapping_mul(2_654_435_761) | 1);
             let mut rc = ((1.0 + rng.f() * 20.0) * SOL as f64) as u64;
             let mut rf = 0u64;
