@@ -15,7 +15,7 @@ export const DECIMALS = 6;
 export const BPS = 10_000n;
 export const CREATOR_FEE_BPS = 50n; // 0.5%, fixed in the program
 export const FLOOR_FEE_BPS = 250n; // 2.5% into the floor, fixed in the program
-export const FLOOR_BPS = 4_000n; // 40%, fixed in the program
+export const FLOOR_BPS = 2_000n; // 20%, fixed in the program
 const U64_MAX = (1n << 64n) - 1n;
 
 // ---------- addresses ----------

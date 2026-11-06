@@ -91,25 +91,25 @@
     <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 10px">
       <span class="display" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--green); border: 3px solid var(--ink); border-radius: 50%">↑</span>
       <h3 class="display" style="margin: 0; font-size: 24px">You buy</h3>
-      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Your SOL buys tokens on a real curve, so the price climbs as people ape in. 1% goes to the creator; <strong>40% of the rest is locked into the floor reserve</strong>, forever. The remainder drives the price.</p>
+      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Your SOL buys tokens on a real curve, so the price climbs as people ape in. A 3% fee comes off the top — 0.5% to the creator, 2.5% into the floor — then <strong>20% of the rest is locked into the floor reserve</strong>, forever. The remainder drives the price, so it pumps like a normal coin.</p>
     </div>
     <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 10px">
       <span class="display" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--yellow); border: 3px solid var(--ink); border-radius: 50%">↕</span>
       <h3 class="display" style="margin: 0; font-size: 24px">You sell</h3>
-      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">You're paid the <strong>better of the curve price or the floor</strong> — whichever is higher — minus a 1% fee. The curve price can dip, but a sell can never drop you below the floor, and selling can never be paused.</p>
+      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">You're paid the <strong>better of the curve price or the floor</strong> — whichever is higher — minus a 3% fee (0.5% creator, 2.5% back into the floor for everyone still holding). The curve price can dip, but a sell can never drop you below the floor, and selling can never be paused.</p>
     </div>
     <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 10px">
       <span class="display" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--green); border: 3px solid var(--ink); border-radius: 50%">⤴</span>
       <h3 class="display" style="margin: 0; font-size: 24px">The floor ratchets up</h3>
-      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Every buy adds real SOL to the floor reserve. The amount you can always redeem per token — reserve ÷ supply — can only ever rise, instantly, for everyone holding. The contract checks it never falls.</p>
+      <p style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700">Every trade adds real SOL to the floor — 20% of each buy, plus 2.5% of every buy and every sell. And when someone sells, their tokens burn, so your slice of the floor grows. Reserve ÷ supply can only ever rise. The contract checks it never falls.</p>
     </div>
   </div>
   <div class="card" style="padding: 22px 26px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between">
-    <span class="display" style="font-size: 22px">Every buy splits:</span>
-    <div role="img" aria-label="Of each buy, 1 percent to the creator, 25 percent to the floor, the rest to the curve" style="flex: 1 1 320px; min-width: 0; display: flex; height: 54px; border: 3px solid var(--ink); border-radius: 16px; overflow: hidden">
-      <div class="display" style="flex: 59 1 0; background: var(--green); display: flex; align-items: center; padding: 0 16px; min-width: 0; font-size: 16px">59% → the curve (price)</div>
-      <div class="display" style="flex: 40 1 0; background: var(--yellow); border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 14px; text-align: center; padding: 0 6px">40% → floor</div>
-      <div class="display" style="flex: 3 1 0; background: var(--ink); color: #fff; border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 11px; text-align: center; padding: 0 4px">1% dev</div>
+    <span class="display" style="font-size: 22px">Every buy:</span>
+    <div role="img" aria-label="Of each buy, about 78 percent drives the curve, about 22 percent funds the floor, half a percent to the creator" style="flex: 1 1 320px; min-width: 0; display: flex; height: 54px; border: 3px solid var(--ink); border-radius: 16px; overflow: hidden">
+      <div class="display" style="flex: 776 1 0; background: var(--green); display: flex; align-items: center; padding: 0 16px; min-width: 0; font-size: 16px">~78% → the curve (price)</div>
+      <div class="display" style="flex: 219 1 0; background: var(--yellow); border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 14px; text-align: center; padding: 0 6px">~22% → floor</div>
+      <div class="display" style="flex: 5 1 0; background: var(--ink); color: #fff; border-left: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; font-size: 10px; text-align: center; padding: 0 3px">0.5%</div>
     </div>
   </div>
 </section>
@@ -148,6 +148,7 @@
           <div style="display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 13px; color: var(--muted)">
             <span>assuming SOL &asymp; $</span>
             <input id="solprice" type="number" min="1" step="10" value="200" style="width: 68px; font-size: 14px; padding: 5px 8px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink)">
+            <span id="solLive" style="font-weight: 900; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: var(--green-deep)"></span>
           </div>
         </div>
 
@@ -173,6 +174,7 @@
               <span id="mult" class="display mono" style="font-size: 20px; background: var(--yellow); border: 2px solid var(--ink); border-radius: 10px; padding: 2px 10px">3.2&times;</span>
             </div>
             <span id="value" class="display mono" style="font-size: clamp(34px, 6vw, 50px); line-height: 1.1; display: block">3.2 SOL</span>
+            <span id="valueusd" class="mono" style="font-size: 16px; font-weight: 800; color: var(--muted); display: block; margin-top: 2px">&mdash;</span>
           </div>
           <div style="height: 3px; background: #DDEFD2"></div>
           <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap">
@@ -183,6 +185,7 @@
             <div style="display: flex; justify-content: space-between; gap: 10px"><span>You put in</span><span id="putin" class="mono">1 SOL</span></div>
             <div style="display: flex; justify-content: space-between; gap: 10px"><span>If the crowd dumps 60%, you can still get</span><span id="afterdump" class="mono" style="color: var(--green-deep)">—</span></div>
             <div style="display: flex; justify-content: space-between; gap: 10px"><span>Market cap at the peak</span><span id="finalmcap" class="mono">—</span></div>
+            <div id="bigbuynote" style="display: none; margin-top: 4px; padding-top: 8px; border-top: 1px dashed #DDEFD2; font-size: 13px; line-height: 1.4; color: var(--muted)">A buy this big relative to the market cap moves the price itself — you own a smaller slice per SOL, so your floor multiple is lower. The floor rewards normal-sized, earlier entries most.</div>
           </div>
         </div>
 
@@ -213,7 +216,7 @@
       <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 9px; font-size: 16px; font-weight: 700; line-height: 1.4">
         <li>Take SOL out of the reserves (the only payout is to sellers).</li>
         <li>Mint tokens for free — new tokens only come from a paid buy.</li>
-        <li>Change the split after launch. 1% creator, 40% floor — fixed in the code.</li>
+        <li>Change the fees after launch. 3% a side — 0.5% creator, 2.5% floor — plus 20% of buys, all fixed in the code.</li>
         <li>Freeze your wallet or block your sell. There's no freeze authority.</li>
         <li><strong>Lower the floor</strong> — every trade re-checks it can only rise.</li>
       </ul>
@@ -245,7 +248,7 @@
 <section class="wrap" style="padding-top: 20px; padding-bottom: 20px">
   <div class="card" style="background: var(--yellow); box-shadow: 10px 10px 0 var(--ink); padding: 30px; display: flex; flex-direction: column; gap: 12px">
     <h2 class="display" style="margin: 0; font-size: clamp(26px, 3.4vw, 40px)">The honest trade-off</h2>
-    <p style="margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; max-width: 820px">ONLY UP can pump like any memecoin — there's real upside. The difference is the floor underneath, which can't fall. The cost of that floor: <strong>40% of every buy goes to the floor instead of straight into the price</strong>, so the curve climbs a little slower than a pure pump would. You're trading a bit of top-end speed for a bottom that can't drop out. The simulator shows real scenarios, not a promise — so you can decide if that trade is for you.</p>
+    <p style="margin: 0; font-size: 18px; font-weight: 700; line-height: 1.5; max-width: 820px">ONLY UP can pump like any memecoin — there's real upside. The difference is the floor underneath, which can't fall. The cost of that floor: <strong>20% of every buy goes to the floor instead of straight into the price</strong>, so the curve climbs a touch slower than a pure pump would — but most of your buy still drives the price. You're trading a sliver of top-end speed for a bottom that can't drop out. The simulator shows real scenarios, not a promise — so you can decide if that trade is for you.</p>
   </div>
 </section>
 
@@ -282,28 +285,30 @@
 (function () {
   "use strict";
   // ---- the contract's v2 curve-and-floor math (floats; illustrative) ----
-  var PHI = 0.40, CREATOR = 0.01, TOTAL = 1e9;
+  var PHI = 0.20, CREATOR = 0.005, FLOORFEE = 0.025, TOTAL = 1e9;
   function mkt(seedSol) { return { rc: seedSol, rf: 0, s: 0 }; }
   function tc(m) { return TOTAL - m.s; }
   function price(m) { return m.rc / tc(m); }
   function floor(m) { return m.s > 0 ? m.rf / m.s : 0; }
   function buy(m, sol) {
-    var avail = sol * (1 - CREATOR);
+    var floorFee = sol * FLOORFEE;               // 2.5% straight into the floor
+    var avail = sol * (1 - CREATOR - FLOORFEE);  // 97% drives the curve/floor split
     var baseFloor = avail * PHI;
     var k = m.rc * tc(m);
     var toCurve0 = avail - baseFloor;
     var rcA = m.rc + toCurve0, tcA = k / rcA, out0 = tc(m) - tcA;
-    var required = m.s > 0 ? m.rf * out0 / m.s : 0;
-    var toFloor = Math.max(baseFloor, required);
-    if (toFloor > avail) toFloor = avail;
-    var toCurve = avail - toFloor;
+    // the 2.5% fee already counts toward the anti-dilution requirement
+    var required = m.s > 0 ? Math.max(0, m.rf * out0 / m.s - floorFee) : 0;
+    var splitFloor = Math.max(baseFloor, required);
+    if (splitFloor > avail) splitFloor = avail;
+    var toCurve = avail - splitFloor;
     if (toCurve <= 1e-12) {
       if (m.s === 0 || m.rf === 0) return 0;
       var o = avail * m.s / m.rf;
-      m.rf += avail; m.s += o; return o;
+      m.rf += floorFee + avail; m.s += o; return o;
     }
     var rc2 = m.rc + toCurve, tc2 = k / rc2, out = tc(m) - tc2;
-    m.rc = rc2; m.rf += toFloor; m.s += out; return out;
+    m.rc = rc2; m.rf += floorFee + splitFloor; m.s += out; return out;
   }
   function sell(m, tok) {
     if (tok >= m.s) tok = m.s * 0.999999;
@@ -312,7 +317,8 @@
     var gross;
     if (curveOut >= floorOut) { gross = curveOut; m.rc = rc2; m.s -= tok; }
     else { gross = floorOut; m.rf -= floorOut; m.s -= tok; }
-    return gross * (1 - CREATOR);
+    m.rf += gross * FLOORFEE;                     // 2.5% of every sell lifts the floor too
+    return gross * (1 - CREATOR - FLOORFEE);
   }
   function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
@@ -381,12 +387,14 @@
 
     var r = simulate(inv, mcapSol, vol, lean);
     $("value").textContent = fmtSol(r.peakVal);
+    $("valueusd").textContent = "≈ " + fmtUsd(r.peakVal * solPrice);
     $("mult").textContent = fmtMult(r.peakVal / inv);
     $("floor").textContent = fmtMult(r.floorVal / inv);
-    $("floorsol").textContent = fmtSol(r.floorVal);
-    $("putin").textContent = fmtSol(inv);
+    $("floorsol").textContent = fmtSol(r.floorVal) + " (" + fmtUsd(r.floorVal * solPrice) + ")";
+    $("putin").textContent = fmtSol(inv) + " (" + fmtUsd(inv * solPrice) + ")";
     $("afterdump").textContent = fmtSol(r.afterVal) + " (" + fmtMult(r.afterVal / inv) + ")";
     $("finalmcap").textContent = fmtUsd(r.finalMcap * solPrice);
+    $("bigbuynote").style.display = (r.floorVal / inv) < 1 ? "block" : "none";
   }
 
   Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (b) {
@@ -396,6 +404,20 @@
     Object.keys(els).forEach(function (k) { els[k].addEventListener(ev, update); });
   });
   update();
+
+  // pull the live SOL price so the $ figures are real
+  fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var p = d && d.solana && d.solana.usd;
+      if (p && isFinite(p) && p > 0) {
+        els.solprice.value = Math.round(p);
+        var live = document.getElementById("solLive");
+        if (live) live.textContent = "● live";
+        update();
+      }
+    })
+    .catch(function () {});
 })();
 </script>
 

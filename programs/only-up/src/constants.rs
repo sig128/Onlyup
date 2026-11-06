@@ -23,9 +23,10 @@ pub const CREATOR_FEE_BPS: u128 = 50;
 pub const FLOOR_FEE_BPS: u128 = 250;
 
 /// Share of each buy (after the 3% fee) routed into the floor reserve, in
-/// basis points. Fixed at 40% — the "dial" that trades curve upside for a
-/// stronger, faster-rising floor. This is on top of the 2.5% floor fee.
-pub const FLOOR_BPS: u128 = 4_000;
+/// basis points. Fixed at 20% — kept light so a buy mostly drives the price
+/// (it pumps like a normal coin). The floor still only rises: from this, plus
+/// the 2.5% fee on every trade, plus the burn on every sell. On top of the fee.
+pub const FLOOR_BPS: u128 = 2_000;
 
 // ---- launch bounds, fixed in code ----
 

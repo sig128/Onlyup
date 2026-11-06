@@ -36,7 +36,7 @@ pub struct BuyQuote {
 /// Quote a buy of `sol` lamports.
 ///
 /// A flat 3% fee comes off the top: 0.5% to the creator, 2.5% straight into the
-/// floor reserve for holders. Of what's left, 40% funds the floor and 60% drives
+/// floor reserve for holders. Of what's left, 20% funds the floor and 80% drives
 /// the curve — and the floor share is raised further whenever that is what it
 /// takes to keep `rf/s` from falling as new tokens are minted. That rule makes
 /// the floor monotonic by construction and stops anyone minting below the floor
@@ -288,7 +288,9 @@ mod tests {
         let peak = my as f64 * (rc as f64 / (TOTAL - s) as f64) / denom;
         let floor_at_peak = my as f64 * (rf as f64 / s as f64) / denom;
         assert!(peak > 10.0, "early holder should see real upside, got {peak}x");
-        assert!(floor_at_peak > 1.0, "floor should exceed entry, got {floor_at_peak}x");
+        // With the lighter 20% floor the floor need not exceed entry — only that
+        // it exists and rises. Monotonicity is proven by the big stress test.
+        assert!(rf > 0 && floor_at_peak > 0.0, "a floor should have built, got {floor_at_peak}x");
 
         let target = (s as u128 * 70 / 100) as u64;
         let mut sold = 0u64;
