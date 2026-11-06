@@ -62,13 +62,17 @@ pub fn handle_sell(ctx: Context<Sell>, tokens_in: u64, min_sol_out: u64) -> Resu
         math::floor_not_lower(floor_reserve, supply, new_floor, new_supply),
         OnlyUpError::FloorWouldDrop
     );
-    // The reserve the payout comes out of must actually drop by the gross.
+    // The reserve the payout comes out of must drop by the gross; the 2.5%
+    // floor fee then flows back into the floor, so the floor only ever grows.
     if quote.from_floor {
-        require!(new_floor == floor_reserve.checked_sub(quote.gross).ok_or(OnlyUpError::FloorShortfall)?, OnlyUpError::FloorShortfall);
+        let expected_floor = floor_reserve
+            .checked_sub(quote.gross).ok_or(OnlyUpError::FloorShortfall)?
+            .checked_add(quote.floor_fee).ok_or(OnlyUpError::MathOverflow)?;
+        require!(new_floor == expected_floor, OnlyUpError::FloorShortfall);
         require!(new_curve_sol == curve_sol, OnlyUpError::MathOverflow);
     } else {
         require!(new_curve_sol == curve_sol.checked_sub(quote.gross).ok_or(OnlyUpError::VaultShortfall)?, OnlyUpError::VaultShortfall);
-        require!(new_floor == floor_reserve, OnlyUpError::MathOverflow);
+        require!(new_floor == floor_reserve.checked_add(quote.floor_fee).ok_or(OnlyUpError::MathOverflow)?, OnlyUpError::MathOverflow);
     }
     let vault_bump = m.vault_bump;
 

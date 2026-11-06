@@ -13,7 +13,8 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 export const PROGRAM_ID = new PublicKey("3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS");
 export const DECIMALS = 6;
 export const BPS = 10_000n;
-export const CREATOR_FEE_BPS = 100n; // 1%, fixed in the program
+export const CREATOR_FEE_BPS = 50n; // 0.5%, fixed in the program
+export const FLOOR_FEE_BPS = 250n; // 2.5% into the floor, fixed in the program
 export const FLOOR_BPS = 4_000n; // 40%, fixed in the program
 const U64_MAX = (1n << 64n) - 1n;
 
@@ -239,6 +240,7 @@ export interface SellQuote {
   fromFloor: boolean;
   gross: bigint;
   creatorFee: bigint;
+  floorFee: bigint;
   userOut: bigint;
   newCurveSol: bigint;
   newFloorReserve: bigint;
@@ -250,7 +252,10 @@ export function quoteBuy(sol: bigint, rc: bigint, tc: bigint, rf: bigint, s: big
   if (rc === 0n || tc === 0n || sol === 0n) return null;
   const creatorFee = (sol * CREATOR_FEE_BPS) / BPS;
   if (creatorFee > U64_MAX) return null;
-  const avail = sol - creatorFee;
+  const floorFee = (sol * FLOOR_FEE_BPS) / BPS;
+  if (floorFee > U64_MAX) return null;
+  const avail = sol - creatorFee - floorFee;
+  if (avail <= 0n) return null;
   const baseFloor = (avail * FLOOR_BPS) / BPS;
   if (baseFloor > U64_MAX) return null;
   const k = rc * tc;
@@ -262,18 +267,24 @@ export function quoteBuy(sol: bigint, rc: bigint, tc: bigint, rf: bigint, s: big
   if (tcA > tc) return null;
   const out0 = tc - tcA;
 
-  const required = s > 0n ? ceilDiv(rf * out0, s) : 0n;
-  if (required > U64_MAX) return null;
-  let toFloor = baseFloor > required ? baseFloor : required;
-  if (toFloor > avail) toFloor = avail;
-  const toCurve = avail - toFloor;
+  // Anti-dilution: the 2.5% floor fee counts toward the no-dilution requirement,
+  // so only the remainder has to come out of avail.
+  let requiredFromAvail = 0n;
+  if (s > 0n) {
+    const needed = ceilDiv(rf * out0, s);
+    requiredFromAvail = needed > floorFee ? needed - floorFee : 0n;
+    if (requiredFromAvail > U64_MAX) return null;
+  }
+  let splitFloor = baseFloor > requiredFromAvail ? baseFloor : requiredFromAvail;
+  if (splitFloor > avail) splitFloor = avail;
+  const toCurve = avail - splitFloor;
 
   if (toCurve === 0n) {
     if (s === 0n || rf === 0n) return null;
     const out = (avail * s) / rf;
     if (out > U64_MAX) return null;
     if (out === 0n || out >= tc) return null;
-    return { creatorFee, toFloor: avail, toCurve: 0n, tokensOut: out, newCurveSol: rc };
+    return { creatorFee, toFloor: floorFee + avail, toCurve: 0n, tokensOut: out, newCurveSol: rc };
   }
 
   const rc2 = rc + toCurve;
@@ -281,7 +292,7 @@ export function quoteBuy(sol: bigint, rc: bigint, tc: bigint, rf: bigint, s: big
   if (tc2 >= tc) return null;
   const out = tc - tc2;
   if (out === 0n) return null;
-  return { creatorFee, toFloor, toCurve, tokensOut: out, newCurveSol: rc2 };
+  return { creatorFee, toFloor: floorFee + splitFloor, toCurve, tokensOut: out, newCurveSol: rc2 };
 }
 
 /** Same as the program's quote_sell. Returns null exactly where the program would refuse. */
@@ -294,21 +305,23 @@ export function quoteSell(tok: bigint, rc: bigint, tc: bigint, rf: bigint, s: bi
   const rc2Curve = ceilDiv(k, tcNew);
   const curveOut = rc > rc2Curve ? rc - rc2Curve : 0n;
 
-  let fromFloor: boolean, gross: bigint, newCurveSol: bigint, newFloorReserve: bigint;
+  let fromFloor: boolean, gross: bigint, newCurveSol: bigint, floorAfterRedeem: bigint;
   if (curveOut >= floorOut) {
     fromFloor = false;
     gross = curveOut;
     newCurveSol = rc2Curve;
-    newFloorReserve = rf;
+    floorAfterRedeem = rf;
   } else {
     fromFloor = true;
     gross = floorOut;
     newCurveSol = rc;
-    newFloorReserve = rf - floorOut;
+    floorAfterRedeem = rf - floorOut;
   }
   const creatorFee = (gross * CREATOR_FEE_BPS) / BPS;
-  const userOut = gross - creatorFee;
-  return { fromFloor, gross, creatorFee, userOut, newCurveSol, newFloorReserve };
+  const floorFee = (gross * FLOOR_FEE_BPS) / BPS;
+  const userOut = gross - creatorFee - floorFee;
+  const newFloorReserve = floorAfterRedeem + floorFee;
+  return { fromFloor, gross, creatorFee, floorFee, userOut, newCurveSol, newFloorReserve };
 }
 
 /** True if new_rf/new_s >= old_rf/old_s — the floor did not fall. */

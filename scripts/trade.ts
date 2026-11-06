@@ -34,7 +34,7 @@ if (side === "buy") {
   if (!q || q.tokensOut === 0n) throw new Error("amount too small");
   console.log(
     `Buying ~${Number(q.tokensOut) / 10 ** lib.DECIMALS} UP ` +
-      `(1% creator fee; ${Number(lib.FLOOR_BPS) / 100}% of the rest funds the floor you can always redeem)`,
+      `(3% fee: 0.5% creator + 2.5% to the floor; ${Number(lib.FLOOR_BPS) / 100}% of the rest also funds your floor)`,
   );
   tx.add(
     createAssociatedTokenAccountIdempotentInstruction(wallet.publicKey, ata, wallet.publicKey, mint),
@@ -48,7 +48,7 @@ if (side === "buy") {
   if (!q || q.userOut === 0n) throw new Error("amount too small");
   console.log(
     `Selling for ~${Number(q.userOut) / LAMPORTS_PER_SOL} SOL ` +
-      `(paid from the ${q.fromFloor ? "floor" : "curve"}, 1% creator fee)`,
+      `(paid from the ${q.fromFloor ? "floor" : "curve"}, 3% fee: 0.5% creator + 2.5% back to the floor)`,
   );
   tx.add(lib.sellIx(wallet.publicKey, mint, ata, tokensIn, withSlippage(q.userOut)));
 } else {

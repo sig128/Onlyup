@@ -14,8 +14,9 @@
 // steps 1 and 3 with their own settings. The CA (contract address) is the mint,
 // printed up front.
 //
-// v2 economics are fixed in the program, not here: 1% creator fee + 40% of each
-// buy routed into the floor reserve. There are no fee dials in this config.
+// v2 economics are fixed in the program, not here: a 3% fee each side (0.5%
+// creator + 2.5% into the floor), plus 40% of each buy routed into the floor
+// reserve. There are no fee dials in this config.
 //
 // Usage: npx tsx deploy.ts launch.config.json
 import { readFileSync, writeFileSync } from "node:fs";

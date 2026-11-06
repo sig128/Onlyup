@@ -23,7 +23,7 @@ console.log(`  Floor reserve:        ${sol(m.floorReserve)} SOL   (redeemable, o
 console.log(`  Circulating supply:   ${(Number(supply) / 10 ** lib.DECIMALS).toLocaleString()} UP`);
 console.log(`  Curve price:          ${lib.curvePrice(m.curveSol, tc).toExponential(6)} SOL / UP`);
 console.log(`  Floor price:          ${lib.floorPrice(m.floorReserve, supply).toExponential(6)} SOL / UP   (always redeemable)`);
-console.log(`  Fees:                 1% creator each side; ${Number(lib.FLOOR_BPS) / 100}% of every buy funds the floor`);
+console.log(`  Fees:                 3% each side (0.5% creator + 2.5% floor); ${Number(lib.FLOOR_BPS) / 100}% of every buy also funds the floor`);
 console.log(`  Trades:               ${m.tradeCount}, volume ${sol(m.volumeLamports)} SOL`);
 console.log(`  Creator fees waiting: ${sol(m.creatorFeesOwed)} SOL`);
 console.log(`  Buying paused:        ${m.buysPaused}`);

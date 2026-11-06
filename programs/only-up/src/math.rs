@@ -7,9 +7,11 @@
 //! Layout: `rc` = curve SOL reserve, `tc` = virtual token reserve
 //! (total_supply - supply), `rf` = floor reserve, `s` = circulating supply.
 //! Curve price = rc/tc. Floor (always redeemable) = rf/s, and it can only rise.
-//! All rounding favors the protocol.
+//!
+//! Fees: a flat 3% per side — 0.5% to the creator, 2.5% straight into the floor
+//! reserve for holders. All rounding favors the protocol.
 
-use crate::constants::{BPS, CREATOR_FEE_BPS, FLOOR_BPS};
+use crate::constants::{BPS, CREATOR_FEE_BPS, FLOOR_BPS, FLOOR_FEE_BPS};
 
 #[inline]
 fn ceil_div(a: u128, b: u128) -> u128 {
@@ -18,9 +20,10 @@ fn ceil_div(a: u128, b: u128) -> u128 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuyQuote {
-    /// Creator share of `sol`, booked in the vault until claimed.
+    /// Creator share of `sol` (0.5%), booked in the vault until claimed.
     pub creator_fee: u64,
-    /// Lamports added to the floor reserve.
+    /// TOTAL lamports added to the floor reserve: the 2.5% floor fee plus the
+    /// split share of what's left.
     pub to_floor: u64,
     /// Lamports added to the curve reserve.
     pub to_curve: u64,
@@ -32,21 +35,27 @@ pub struct BuyQuote {
 
 /// Quote a buy of `sol` lamports.
 ///
-/// 25% of the post-fee SOL funds the floor, 75% drives the curve — except the
-/// floor share is raised whenever that is what it takes to keep `rf/s` from
-/// falling as new tokens are minted. That single rule makes the floor monotonic
-/// by construction and also stops anyone minting below the floor to redeem for
-/// a profit.
+/// A flat 3% fee comes off the top: 0.5% to the creator, 2.5% straight into the
+/// floor reserve for holders. Of what's left, 40% funds the floor and 60% drives
+/// the curve — and the floor share is raised further whenever that is what it
+/// takes to keep `rf/s` from falling as new tokens are minted. That rule makes
+/// the floor monotonic by construction and stops anyone minting below the floor
+/// to redeem for a profit. `to_floor` is the TOTAL added to the floor (the 2.5%
+/// fee plus the split share).
 pub fn quote_buy(sol: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<BuyQuote> {
     if rc == 0 || tc == 0 || sol == 0 {
         return None;
     }
     let creator_fee = u64::try_from((sol as u128) * CREATOR_FEE_BPS / BPS).ok()?;
-    let avail = sol.checked_sub(creator_fee)?;
+    let floor_fee = u64::try_from((sol as u128) * FLOOR_FEE_BPS / BPS).ok()?;
+    let avail = sol.checked_sub(creator_fee)?.checked_sub(floor_fee)?;
+    if avail == 0 {
+        return None;
+    }
     let base_floor = u64::try_from((avail as u128) * FLOOR_BPS / BPS).ok()?;
     let k = (rc as u128) * (tc as u128);
 
-    // Tentative mint with the default 75% on the curve.
+    // Tentative mint with the default 60% on the curve.
     let to_curve0 = avail.checked_sub(base_floor)?;
     if to_curve0 == 0 {
         return None;
@@ -55,21 +64,24 @@ pub fn quote_buy(sol: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<BuyQuote
     let tc_a = ceil_div(k, rc_a as u128);
     let out0 = (tc as u128).checked_sub(tc_a)? as u64;
 
-    // Anti-dilution: require to_floor >= ceil(rf * out0 / s) so the floor rf/s
-    // cannot fall when the new tokens join supply. Using out0 (the max possible
-    // out) over-funds slightly, which is the safe direction.
-    let required = if s > 0 {
-        u64::try_from(ceil_div((rf as u128) * (out0 as u128), s as u128)).ok()?
+    // Anti-dilution: the TOTAL floor top-up (fee + split) must be at least
+    // ceil(rf * out0 / s) so `rf/s` can't fall as the new tokens join supply.
+    // The 2.5% fee already counts toward that, so only the remainder must come
+    // out of `avail`. Using out0 (the max possible out) over-funds slightly.
+    let required_from_avail = if s > 0 {
+        let needed = ceil_div((rf as u128) * (out0 as u128), s as u128);
+        u64::try_from(needed.saturating_sub(floor_fee as u128)).ok()?
     } else {
         0
     };
-    let to_floor = base_floor.max(required).min(avail);
-    let to_curve = avail - to_floor;
+    let split_floor = base_floor.max(required_from_avail).min(avail);
+    let to_curve = avail - split_floor;
 
     if to_curve == 0 {
         // The curve is at or below the floor. Don't hand out cheap tokens: mint
-        // at the floor price F = rf/s with all SOL into the floor reserve, which
-        // keeps rf/s exactly flat and nudges the curve price back up.
+        // at the floor price F = rf/s with all of `avail` into the floor, which
+        // keeps rf/s from falling (the fee only lifts it) and nudges the curve
+        // price back up.
         if s == 0 || rf == 0 {
             return None;
         }
@@ -79,7 +91,7 @@ pub fn quote_buy(sol: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<BuyQuote
         }
         return Some(BuyQuote {
             creator_fee,
-            to_floor: avail,
+            to_floor: floor_fee.checked_add(avail)?,
             to_curve: 0,
             tokens_out: out,
             new_curve_sol: rc,
@@ -97,7 +109,7 @@ pub fn quote_buy(sol: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<BuyQuote
     }
     Some(BuyQuote {
         creator_fee,
-        to_floor,
+        to_floor: floor_fee.checked_add(split_floor)?,
         to_curve,
         tokens_out: out,
         new_curve_sol: rc2,
@@ -110,20 +122,23 @@ pub struct SellQuote {
     pub from_floor: bool,
     /// Gross value of the tokens at the better of curve/floor, before the fee.
     pub gross: u64,
-    /// Creator share of `gross`, booked in the vault until claimed.
+    /// Creator share of `gross` (0.5%), booked in the vault until claimed.
     pub creator_fee: u64,
-    /// Lamports paid to the seller.
+    /// Share of `gross` (2.5%) added back into the floor reserve for holders.
+    pub floor_fee: u64,
+    /// Lamports paid to the seller (gross minus the 3% fee).
     pub user_out: u64,
     /// Curve SOL reserve after the sell.
     pub new_curve_sol: u64,
-    /// Floor reserve after the sell.
+    /// Floor reserve after the sell (redemption, if any, then the 2.5% fee).
     pub new_floor_reserve: u64,
 }
 
 /// Quote a sale of `tok` base units. The seller gets whichever is larger: the
-/// constant-product curve payout, or redeeming at the floor `rf/s`. The floor
-/// payout rounds down, so the floor reserve always covers it, and a floor
-/// redemption leaves `rf/s` unchanged — never lower.
+/// constant-product curve payout, or redeeming at the floor `rf/s` — minus a
+/// flat 3% fee (0.5% creator, 2.5% back into the floor). The floor payout rounds
+/// down, so the reserve always covers it, and because the 2.5% fee flows back in
+/// while supply shrinks, a sell can only ever lift `rf/s`, never lower it.
 pub fn quote_sell(tok: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<SellQuote> {
     if s == 0 || tok == 0 || tok >= s {
         return None;
@@ -134,17 +149,22 @@ pub fn quote_sell(tok: u64, rc: u64, tc: u64, rf: u64, s: u64) -> Option<SellQuo
     let rc2_curve = ceil_div(k, tc_new); // round the reserve-left UP -> pay less (favor pool)
     let curve_out = rc.saturating_sub(rc2_curve as u64);
 
-    let (from_floor, gross, new_curve_sol, new_floor_reserve) = if curve_out >= floor_out {
+    // Pay the better of the curve or the floor.
+    let (from_floor, gross, new_curve_sol, floor_after_redeem) = if curve_out >= floor_out {
         (false, curve_out, rc2_curve as u64, rf) // normal curve sell
     } else {
         (true, floor_out, rc, rf.checked_sub(floor_out)?) // redeem at the floor
     };
+    // 3% fee on the gross: 0.5% creator, 2.5% back into the floor for holders.
     let creator_fee = u64::try_from((gross as u128) * CREATOR_FEE_BPS / BPS).ok()?;
-    let user_out = gross.checked_sub(creator_fee)?;
+    let floor_fee = u64::try_from((gross as u128) * FLOOR_FEE_BPS / BPS).ok()?;
+    let user_out = gross.checked_sub(creator_fee)?.checked_sub(floor_fee)?;
+    let new_floor_reserve = floor_after_redeem.checked_add(floor_fee)?;
     Some(SellQuote {
         from_floor,
         gross,
         creator_fee,
+        floor_fee,
         user_out,
         new_curve_sol,
         new_floor_reserve,
@@ -299,5 +319,20 @@ mod tests {
     fn cannot_sell_the_whole_supply() {
         assert!(quote_sell(100, 5 * SOL, TOTAL, 0, 100).is_none());
         assert!(quote_sell(99, 5 * SOL, TOTAL - 100, 1_000_000, 100).is_some());
+    }
+
+    /// The fee is exactly 0.5% creator + 2.5% floor = 3% a side.
+    #[test]
+    fn fee_is_three_percent_split() {
+        let sol = 1_000_000_000u64; // 1 SOL
+        let q = quote_buy(sol, 5 * SOL, TOTAL, 0, 0).unwrap();
+        assert_eq!(q.creator_fee, sol * 50 / 10_000, "creator fee should be 0.5%");
+        // to_floor includes the 2.5% fee plus the 40% split, so it exceeds the fee.
+        assert!(q.to_floor >= sol * 250 / 10_000, "floor should get at least the 2.5% fee");
+
+        let sq = quote_sell(1_000_000, 5 * SOL, TOTAL - 2_000_000, 2 * SOL, 2_000_000).unwrap();
+        assert_eq!(sq.creator_fee, sq.gross * 50 / 10_000, "sell creator fee should be 0.5%");
+        assert_eq!(sq.floor_fee, sq.gross * 250 / 10_000, "sell floor fee should be 2.5%");
+        assert_eq!(sq.user_out, sq.gross - sq.creator_fee - sq.floor_fee, "seller keeps 97%");
     }
 }
