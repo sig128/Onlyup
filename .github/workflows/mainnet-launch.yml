@@ -1,0 +1,76 @@
+name: mainnet-launch
+
+# Launches the UP token on mainnet: mints at the vanity CA, attaches the Only Up
+# metadata, seeds the market, and makes the launch buy. MANUAL ONLY — real SOL.
+# Run mainnet-deploy first. Then run mainnet-pool to create the Meteora pool.
+#
+# Repository secrets required:
+#   MAINNET_DEPLOYER_KEYPAIR - the funded mainnet wallet (JSON array)
+#   MINT_KEYPAIR             - keys/v2-mint-keypair.json (the vanity ...up mint)
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL"
+        default: "https://api.mainnet-beta.solana.com"
+      seedSol:
+        description: "SOL seeded into the market at launch (floor + curve)"
+        default: "0.5"
+      seedTokens:
+        description: "UP tokens seeded into the curve (keep equal to devnet for identical economics)"
+        default: "500000000"
+      launchBuySol:
+        description: "Your opening buy in SOL. This UP becomes the Meteora pool's inventory — bigger buy = deeper pool."
+        default: "0.5"
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write keypairs from secrets
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+          MINT_KEYPAIR: ${{ secrets.MINT_KEYPAIR }}
+        run: |
+          umask 077
+          mkdir -p keys
+          printf '%s' "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/deployer.json
+          printf '%s' "$MINT_KEYPAIR" > keys/v2-mint-keypair.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Launch the token
+        working-directory: scripts
+        env:
+          RPC: ${{ github.event.inputs.rpc }}
+          SEED_SOL: ${{ github.event.inputs.seedSol }}
+          SEED_TOKENS: ${{ github.event.inputs.seedTokens }}
+          LAUNCH_BUY: ${{ github.event.inputs.launchBuySol }}
+        run: |
+          cat > launch.config.json <<JSON
+          {
+            "rpcUrl": "$RPC",
+            "keypairPath": "/tmp/deployer.json",
+            "mintKeypairPath": "../keys/v2-mint-keypair.json",
+            "name": "Only Up",
+            "symbol": "UP",
+            "metadataUri": "https://www.onlyup.finance/token.json",
+            "metadataMutable": true,
+            "seedSol": $SEED_SOL,
+            "seedTokens": $SEED_TOKENS,
+            "launchBuySol": $LAUNCH_BUY
+          }
+          JSON
+          npx tsx deploy.ts launch.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json keys/v2-mint-keypair.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mainnet-launch-output
+          path: scripts/launch-output.json

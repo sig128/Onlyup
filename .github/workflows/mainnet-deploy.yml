@@ -1,0 +1,52 @@
+name: mainnet-deploy
+
+# Deploys the ONLY UP program to mainnet-beta. MANUAL ONLY — spends real SOL and
+# is effectively irreversible. Run this only after the devnet dry-run is clean.
+#
+# Repository secrets required:
+#   MAINNET_DEPLOYER_KEYPAIR - a mainnet wallet funded with real SOL (JSON array).
+#                              Keep it single-purpose; drain it after launch.
+#   PROGRAM_KEYPAIR          - keys/only_up-program-keypair.json (same program id
+#                              as devnet: 3ooGGJTLiadrijsQPW9AfTQLrgawhSkEYJPrPQpjnGxS)
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL (a private RPC — Helius/QuickNode/Triton — is strongly recommended; the public one often rejects program deploys)"
+        default: "https://api.mainnet-beta.solana.com"
+      priorityMicrolamports:
+        description: "Priority fee (micro-lamports per compute unit) to help the deploy land"
+        default: "50000"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: cargo build-sbf --manifest-path programs/only-up/Cargo.toml --sbf-out-dir target/deploy
+      - name: Deploy to mainnet-beta
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+          PROGRAM_KEYPAIR: ${{ secrets.PROGRAM_KEYPAIR }}
+          RPC: ${{ github.event.inputs.rpc }}
+          PRIO: ${{ github.event.inputs.priorityMicrolamports }}
+        run: |
+          umask 077
+          echo "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/deployer.json
+          echo "$PROGRAM_KEYPAIR" > /tmp/program.json
+          echo "Deployer: $(solana address -k /tmp/deployer.json)"
+          echo "Balance:  $(solana balance -k /tmp/deployer.json --url "$RPC")"
+          solana program deploy target/deploy/only_up.so \
+            --url "$RPC" \
+            --keypair /tmp/deployer.json \
+            --program-id /tmp/program.json \
+            --with-compute-unit-price "$PRIO" \
+            --max-sign-attempts 100
+          echo "Program: $(solana address -k /tmp/program.json)"
+          rm -f /tmp/deployer.json /tmp/program.json

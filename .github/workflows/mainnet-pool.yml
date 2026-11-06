@@ -1,0 +1,63 @@
+name: mainnet-pool
+
+# Creates the Meteora DAMM v2 mirror pool on mainnet, seeded from the UP the
+# deployer bought at launch, at the exact contract price. This is the pool Axiom /
+# DexScreener / Jupiter index. MANUAL ONLY — real SOL. Run after mainnet-launch.
+#
+# Repository secrets required:
+#   MAINNET_DEPLOYER_KEYPAIR - the funded mainnet wallet that launched the token
+on:
+  workflow_dispatch:
+    inputs:
+      rpc:
+        description: "Mainnet RPC URL"
+        default: "https://api.mainnet-beta.solana.com"
+      poolSol:
+        description: "Target SOL on the pool's SOL side (capped by what your launch buy backs)"
+        default: "0.3"
+      poolFeeBps:
+        description: "Pool swap fee in basis points (LP revenue). 100 = 1%"
+        default: "100"
+
+jobs:
+  pool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write deployer keypair from secret
+        env:
+          MAINNET_DEPLOYER_KEYPAIR: ${{ secrets.MAINNET_DEPLOYER_KEYPAIR }}
+        run: |
+          umask 077
+          printf '%s' "$MAINNET_DEPLOYER_KEYPAIR" > /tmp/deployer.json
+      - name: Install deps
+        working-directory: scripts
+        run: npm ci
+      - name: Create the Meteora mirror pool
+        working-directory: scripts
+        env:
+          RPC: ${{ github.event.inputs.rpc }}
+          POOL_SOL: ${{ github.event.inputs.poolSol }}
+          POOL_FEE_BPS: ${{ github.event.inputs.poolFeeBps }}
+        run: |
+          cat > pool.config.json <<JSON
+          {
+            "rpcUrl": "$RPC",
+            "keypairPath": "/tmp/deployer.json",
+            "mint": "95QG7JnaYEdY8ZzuGnP7qkHfDVphH4cB8YL4pKMDTtup",
+            "poolSol": $POOL_SOL,
+            "poolFeeBps": $POOL_FEE_BPS
+          }
+          JSON
+          npx tsx pool.ts pool.config.json
+      - name: Clean up secrets
+        if: always()
+        run: rm -f /tmp/deployer.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mainnet-pool-output
+          path: scripts/pool-output.json
