@@ -173,8 +173,9 @@
               <span style="font-weight: 900; font-size: 15px; letter-spacing: .3px">AT THE PEAK, WORTH</span>
               <span id="mult" class="display mono" style="font-size: 20px; background: var(--yellow); border: 2px solid var(--ink); border-radius: 10px; padding: 2px 10px">3.2&times;</span>
             </div>
-            <span id="value" class="display mono" style="font-size: clamp(34px, 6vw, 50px); line-height: 1.1; display: block">3.2 SOL</span>
+            <span id="value" class="display mono" style="font-size: clamp(34px, 6vw, 50px); line-height: 1.1; display: block; color: var(--green-deep)">3.2 SOL</span>
             <span id="valueusd" class="mono" style="font-size: 16px; font-weight: 800; color: var(--muted); display: block; margin-top: 2px">&mdash;</span>
+            <span id="profit" class="display mono" style="font-size: 21px; font-weight: 700; color: var(--green-deep); display: inline-block; margin-top: 10px; background: #E4FBEA; border: 2px solid var(--green-deep); border-radius: 10px; padding: 6px 14px">&mdash;</span>
           </div>
           <div style="height: 3px; background: #DDEFD2"></div>
           <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap">
@@ -388,7 +389,16 @@
     var r = simulate(inv, mcapSol, vol, lean);
     $("value").textContent = fmtSol(r.peakVal);
     $("valueusd").textContent = "≈ " + fmtUsd(r.peakVal * solPrice);
+    var peakProfit = r.peakVal - inv, up = peakProfit >= 0;
+    $("value").style.color = up ? "var(--green-deep)" : "var(--ink)";
+    $("profit").style.color = up ? "var(--green-deep)" : "#B23A2E";
+    $("profit").style.background = up ? "#E4FBEA" : "#FDEAE7";
+    $("profit").style.borderColor = up ? "var(--green-deep)" : "#B23A2E";
+    $("profit").textContent = up
+      ? "▲ +" + fmtSol(peakProfit) + " profit  ·  +" + fmtUsd(peakProfit * solPrice)
+      : "▼ −" + fmtSol(Math.abs(peakProfit)) + " down  ·  −" + fmtUsd(Math.abs(peakProfit) * solPrice);
     $("mult").textContent = fmtMult(r.peakVal / inv);
+    $("mult").style.background = up ? "var(--green)" : "var(--yellow)";
     $("floor").textContent = fmtMult(r.floorVal / inv);
     $("floorsol").textContent = fmtSol(r.floorVal) + " (" + fmtUsd(r.floorVal * solPrice) + ")";
     $("putin").textContent = fmtSol(inv) + " (" + fmtUsd(inv * solPrice) + ")";
